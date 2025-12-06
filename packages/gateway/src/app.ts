@@ -1,0 +1,182 @@
+// src/app.ts
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
+import fs from "fs";
+import path from "path";
+import config from "./config/app.config";
+import {
+  ipWhitelistMiddleware,
+  productionGuardMiddleware,
+  rateLimitMiddleware,
+} from "./middlewares/securityMiddleware";
+import routes from "./routes/indexRoutes";
+import serverManager from "./services/serverManager";
+
+const app = express();
+
+// ========== MIDDLEWARES GLOBAIS ==========
+
+// Segurança básica
+app.use(
+  helmet({
+    contentSecurityPolicy: config.NODE_ENV === "production" ? undefined : false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
+// CORS configurado por ambiente
+app.use(
+  cors({
+    origin: config.CORS_ORIGIN,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  })
+);
+
+// Logging
+const logDir = config.LOG_DIR;
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir, { recursive: true });
+}
+
+// Log em arquivo apenas em produção
+if (config.NODE_ENV === "production") {
+  const accessLogStream = fs.createWriteStream(
+    path.join(logDir, "access.log"),
+    { flags: "a" }
+  );
+  app.use(morgan("combined", { stream: accessLogStream }));
+} else {
+  app.use(morgan("dev"));
+}
+
+// Rate limiting em produção
+if (config.NODE_ENV === "production") {
+  app.use(rateLimitMiddleware());
+}
+
+// Whitelist de IPs em produção
+app.use(ipWhitelistMiddleware);
+
+// Body parsing
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// ========== ROTAS ADMINISTRATIVAS (DESENVOLVIMENTO APENAS) ==========
+
+if (config.NODE_ENV === "development") {
+  // Middleware para rotas de desenvolvimento
+  app.use("/admin", productionGuardMiddleware(["/admin"]));
+
+  // Dashboard de administração
+  app.get("/admin/dashboard", (req, res) => {
+    res.json({
+      title: "Development Dashboard",
+      environment: config.NODE_ENV,
+      servers: serverManager.getServerStatuses(),
+      config: {
+        appName: config.APP_NAME,
+        host: config.HOST,
+        port: config.PORT,
+        requestTimeout: config.REQUEST_TIMEOUT,
+      },
+    });
+  });
+
+  // Rotas de debug
+  app.get("/admin/debug", (req, res) => {
+    res.json({
+      headers: req.headers,
+      ip: req.ip,
+      timestamp: new Date().toISOString(),
+      userAgent: req.get("User-Agent"),
+    });
+  });
+}
+
+// ========== ROTAS DA API ==========
+
+// Health check básico
+app.get("/health", (req, res) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    service: config.APP_NAME,
+    version: "1.0.0",
+    environment: config.NODE_ENV,
+    uptime: process.uptime(),
+  });
+});
+
+// Status dos servidores (disponível em produção também)
+app.get("/api/status", async (req, res) => {
+  try {
+    const status = await serverManager.checkAllServers();
+    res.json(serverManager.generateReport());
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to check server status",
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+// Registrar todas as rotas da aplicação
+app.use(routes);
+
+// ========== HANDLERS DE ERRO ==========
+
+// 404 - Não encontrado
+app.use((req, res) => {
+  res.status(404).json({
+    error: "Not Found",
+    message: `Route ${req.method} ${req.path} not found`,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Error handler global
+app.use(
+  (
+    err: Error,
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    console.error("🚨 Global error handler:", err);
+
+    const statusCode = (err as any).statusCode || 500;
+    const message =
+      config.NODE_ENV === "production" ? "Internal Server Error" : err.message;
+
+    res.status(statusCode).json({
+      error: "Internal Server Error",
+      message,
+      timestamp: new Date().toISOString(),
+      ...(config.NODE_ENV === "development" && { stack: err.stack }),
+    });
+  }
+);
+
+// ========== SHUTDOWN GRACEFUL ==========
+
+const gracefulShutdown = () => {
+  console.log("🛑 Received shutdown signal. Cleaning up...");
+
+  // Parar verificações de saúde
+  serverManager.stopHealthChecks();
+
+  // Dar tempo para conexões terminarem
+  setTimeout(() => {
+    console.log("👋 Server shutdown complete");
+    process.exit(0);
+  }, 1000);
+};
+
+process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", gracefulShutdown);
+
+export default app;
