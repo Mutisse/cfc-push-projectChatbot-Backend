@@ -1,34 +1,45 @@
+import config from '../config/app.config';
+
 export interface ServiceConfig {
   name: string;
   url: string;
   prefix: string;
   timeout: number;
   requiresAuth: boolean;
-  healthEndpoint?: string;
+  healthEndpoint: string;
 }
 
+// Baseado na configuração principal
 const services: ServiceConfig[] = [
   {
     name: 'management',
-    url: process.env.MANAGEMENT_SERVICE_URL || 'http://localhost:3001',
+    url: config.SERVERS.management.url,
     prefix: '/api/management',
-    timeout: 15000,
+    timeout: config.SERVERS.management.timeout,
+    requiresAuth: true,
+    healthEndpoint: '/health',
+  },
+  {
+    name: 'notify',
+    url: config.SERVERS.notify.url,
+    prefix: '/api/notifications',
+    timeout: config.SERVERS.notify.timeout,
+    requiresAuth: true,
+    healthEndpoint: '/health',
+  },
+  {
+    name: 'monitoring',
+    url: config.SERVERS.monitoring.url,
+    prefix: '/api/monitoring',
+    timeout: config.SERVERS.monitoring.timeout,
     requiresAuth: true,
     healthEndpoint: '/health',
   },
   {
     name: 'chatbot',
-    url: process.env.CHATBOT_SERVICE_URL || 'http://localhost:3002',
+    url: config.SERVERS.chatbot.url,
     prefix: '/api/chatbot',
-    timeout: 15000,
-    requiresAuth: true,
-    healthEndpoint: '/health',
-  },
-  {
-    name: 'notifications',
-    url: process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3003',
-    prefix: '/api/notifications',
-    timeout: 10000,
+    timeout: config.SERVERS.chatbot.timeout,
     requiresAuth: true,
     healthEndpoint: '/health',
   },
