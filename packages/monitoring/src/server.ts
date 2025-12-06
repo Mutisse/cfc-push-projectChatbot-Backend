@@ -9,13 +9,44 @@ class MonitoringServer {
   private server: http.Server | null = null;
   private wss: WebSocketServer | null = null;
   private port: number;
+  private nodeEnv: string;
   private database: Database;
 
   constructor() {
+    // Valida e obtém APENAS do .env (via config)
+    this.validateEnvironment();
+    
     this.app = MonitoringApp;
-    this.port = config.PORT;
+    this.port = this.getPort();
+    this.nodeEnv = this.getNodeEnv();
     this.database = Database.getInstance(); // Usar singleton
     this.setupProcessHandlers();
+  }
+
+  private validateEnvironment(): void {
+    // Valida variáveis obrigatórias
+    const requiredVars = ['PORT', 'NODE_ENV'];
+    const missingVars = requiredVars.filter(
+      varName => !process.env[varName] || process.env[varName]!.trim() === ''
+    );
+
+    if (missingVars.length > 0) {
+      throw new Error(`❌ Variáveis de ambiente ausentes no .env: ${missingVars.join(', ')}`);
+    }
+
+    // Validações específicas
+    const port = parseInt(process.env.PORT!);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      throw new Error(`❌ PORT inválido no .env: ${process.env.PORT}`);
+    }
+  }
+
+  private getPort(): number {
+    return parseInt(process.env.PORT!);
+  }
+
+  private getNodeEnv(): string {
+    return process.env.NODE_ENV!;
   }
 
   private setupProcessHandlers(): void {
@@ -33,12 +64,12 @@ class MonitoringServer {
   public async start(): Promise<void> {
     try {
       console.log('🚀 Starting CFC Monitoring Server...');
-      console.log(`📋 Environment: ${config.NODE_ENV}`);
+      console.log(`📋 Environment: ${this.nodeEnv}`);
       console.log(`🔧 Port: ${this.port}`);
       
       // 1. Conectar ao MongoDB usando a classe Database
       await this.database.connect();
-      console.log(`✅ Database connected: ${config.MONGO.DB_NAME}`);
+      console.log(`✅ Database connected: ${process.env.MONGO_DB_NAME}`);
       
       // 2. Iniciar servidor HTTP
       await this.startHttpServer();
@@ -157,7 +188,7 @@ class MonitoringServer {
     return {
       running: !!this.server,
       port: this.port,
-      environment: config.NODE_ENV,
+      environment: this.nodeEnv,
       database: this.database.isConnectedToDB() ? 'connected' : 'disconnected',
       websocket: this.wss ? 'active' : 'inactive',
       uptime: process.uptime()

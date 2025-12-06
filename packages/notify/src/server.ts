@@ -6,9 +6,29 @@ dotenv.config();
 
 class Server {
   private port: number;
+  private nodeEnv: string;
 
   constructor() {
-    this.port = parseInt(process.env.PORT || "3002");
+    // Usa APENAS NOTIFICATION_PORT como definido no .env
+    const portString = process.env.NOTIFICATION_PORT;
+    
+    if (!portString) {
+      throw new Error('❌ NOTIFICATION_PORT não está definido no .env');
+    }
+    
+    this.port = parseInt(portString);
+    
+    // Validação adicional
+    if (isNaN(this.port) || this.port < 1 || this.port > 65535) {
+      throw new Error(`❌ NOTIFICATION_PORT inválido: ${portString}`);
+    }
+
+    // Usa APENAS NODE_ENV como definido no .env
+    this.nodeEnv = process.env.NODE_ENV || '';
+    
+    if (!this.nodeEnv) {
+      throw new Error('❌ NODE_ENV não está definido no .env');
+    }
   }
 
   async start(): Promise<void> {
@@ -31,8 +51,7 @@ class Server {
   private async connectDatabase(): Promise<void> {
     console.log("🔌 Conectando ao MongoDB...");
 
-    const MONGODB_URI =
-      process.env.MONGODB_URI || "mongodb://localhost:27017/cfc_notify";
+    const MONGODB_URI = process.env.MONGODB_URI!;
 
     try {
       await mongoose.connect(MONGODB_URI, {
@@ -62,7 +81,7 @@ class Server {
       console.log(`✅ NOTIFICATIONS SERVICE RODANDO NA PORTA: ${this.port}`);
       console.log(`📅 Data: ${new Date().toLocaleDateString()}`);
       console.log(`⏰ Hora: ${new Date().toLocaleTimeString()}`);
-      console.log(`🌍 Ambiente: ${process.env.NODE_ENV || "development"}`);
+      console.log(`🌍 Ambiente: ${this.nodeEnv}`);
       console.log("=".repeat(50));
       console.log("\n🎯 ENDPOINTS:");
       console.log(`   🩺 GET   http://localhost:${this.port}/health`);

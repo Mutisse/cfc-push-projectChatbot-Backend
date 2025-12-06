@@ -8,6 +8,8 @@ export class HealthController {
     try {
       const cacheStats = cacheService.getCacheStats();
       const dbStatus = DatabaseService.getConnectionStatus();
+      
+      // ✅ CORRIGIDO: Usar propriedades corretas
       res.json({
         success: true,
         service: "CFC Push Chatbot (AUTÔNOMO)",
@@ -17,7 +19,7 @@ export class HealthController {
         architecture: "Independente (sem API Management)",
         components: {
           database: dbStatus.isConnected ? "✅ Conectado" : "❌ Offline",
-          cache: cacheStats.isInitialized
+          cache: cacheStats.isLoaded          // ← Mudado de isInitialized para isLoaded
             ? "✅ Inicializado"
             : "❌ Não inicializado",
           sessions: "✅ Operacional",
@@ -26,7 +28,7 @@ export class HealthController {
         stats: {
           database: dbStatus.database,
           cachedMenus: cacheStats.totalMenus,
-          cacheLastUpdate: cacheStats.lastUpdate?.toISOString() || "N/A",
+          cacheLastUpdate: cacheStats.lastRefresh || "N/A",  // ← Mudado de lastUpdate para lastRefresh
         },
       });
     } catch (error: any) {
@@ -47,6 +49,16 @@ export class HealthController {
       const cacheStats = cacheService.getCacheStats();
       const dbStatus = DatabaseService.getConnectionStatus();
 
+      // ✅ Adicionar propriedades ausentes ou usar alternativas
+      const enhancedCacheStats = {
+        ...cacheStats,
+        isInitialized: cacheStats.isLoaded,      // ← Usar isLoaded como isInitialized
+        lastUpdate: cacheStats.lastRefresh,      // ← Usar lastRefresh como lastUpdate
+        cacheAge: cacheStats.lastRefresh 
+          ? Date.now() - new Date(cacheStats.lastRefresh).getTime()
+          : null
+      };
+
       const diagnostics = {
         timestamp: new Date().toISOString(),
         system: {
@@ -62,7 +74,7 @@ export class HealthController {
           readyState: this.getReadyStateText(dbStatus.readyState),
           models: dbStatus.models,
         },
-        cache: cacheStats,
+        cache: enhancedCacheStats,  // ← Usar stats melhorados
         configuration: {
           node_env: process.env.NODE_ENV,
           port: process.env.PORT,
@@ -77,7 +89,7 @@ export class HealthController {
         diagnostics,
         summary: {
           status:
-            dbStatus.isConnected && cacheStats.isInitialized
+            dbStatus.isConnected && cacheStats.isLoaded  // ← Usar isLoaded
               ? "✅ Saudável"
               : "⚠️ Atenção",
           recommendations: this.generateRecommendations(diagnostics),

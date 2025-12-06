@@ -68,6 +68,33 @@ class App {
   private setupRoutes(): void {
     console.log("📁 Configurando rotas...");
 
+    // ✅ HEALTH CHECK PRINCIPAL (para Gateway/monitoramento)
+    this.app.get("/health", (req, res) => {
+      res.json({
+        success: true,
+        service: "CFC Management API",
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        version: "1.0.0",
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV || "development",
+      });
+    });
+
+    // ✅ HEALTH CHECK COM PREFIXO (para compatibilidade)
+    this.app.get("/api/management/health", (req, res) => {
+      res.json({
+        success: true,
+        service: "CFC Management API",
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        version: "1.0.0",
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV || "development",
+        note: "Prefixed health endpoint",
+      });
+    });
+
     // Rotas públicas
     this.app.use("/api/management/auth", authRoutes);
 
@@ -78,20 +105,19 @@ class App {
     this.app.use("/api/management/users", userRoutes);
     this.app.use("/api/management/analytics", analyticsRoutes);
 
-    // Health check simples
-    this.app.get("/api/management/health", (req, res) => {
-      res.json({
-        success: true,
-        message: "API funcionando",
-        timestamp: new Date().toISOString(),
-      });
-    });
-
     // 404 handler
     this.app.use("*", (req, res) => {
       res.status(404).json({
         success: false,
         message: "Rota não encontrada",
+        availableRoutes: [
+          "GET /health",
+          "GET /api/management/health",
+          "POST /api/management/auth/login",
+          "GET /api/management/menus",
+          "GET /api/management/welcome-message",
+          "GET /api/management/analytics",
+        ],
       });
     });
 
@@ -106,7 +132,11 @@ class App {
         console.error("Erro:", error);
         res.status(500).json({
           success: false,
-          message: "Erro interno",
+          message: "Erro interno do servidor",
+          timestamp: new Date().toISOString(),
+          ...(process.env.NODE_ENV === "development" && {
+            error: error.message,
+          }),
         });
       }
     );

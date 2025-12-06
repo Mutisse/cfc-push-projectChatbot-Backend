@@ -4,17 +4,18 @@ dotenv.config();
 
 export interface ServerConfig {
   name: string;
+  url: string;
   host: string;
   port: number;
   path: string;
   protocol: "http" | "https";
   timeout: number;
-  healthEndpoint?: string;
+  healthEndpoint: string;
 }
 
 export interface AppConfig {
   // Ambiente
-  NODE_ENV: "development" | "production" | "test";
+  NODE_ENV: string;
   PORT: number;
   HOST: string;
   APP_NAME: string;
@@ -24,10 +25,10 @@ export interface AppConfig {
   JWT_AUDIENCE: string;
   JWT_ISSUER: string;
   CORS_ORIGIN: string[];
-  ALLOWED_IPS: string[]; // IPs permitidos em produção
+  ALLOWED_IPS: string[];
 
   // Logging
-  LOG_LEVEL: "error" | "warn" | "info" | "debug";
+  LOG_LEVEL: string;
   LOG_DIR: string;
   ENABLE_AUDIT_LOG: boolean;
 
@@ -42,212 +43,254 @@ export interface AppConfig {
   ENABLE_METRICS: boolean;
   METRICS_PORT: number;
 
-  // MongoDB (Atlas)
+  // MongoDB
   MONGODB_URI: string;
   MONGODB_DATABASE: string;
+  MONGODB_MAX_POOL_SIZE: number;
+  MONGODB_SERVER_SELECTION_TIMEOUT: number;
+  MONGODB_SOCKET_TIMEOUT: number;
+
+  // Gateway
+  PROXY_TIMEOUT: number;
 }
 
-// Configuração padrão para desenvolvimento
-const defaultConfig: AppConfig = {
-  NODE_ENV: "development",
-  PORT: 3001,
-  HOST: "localhost",
-  APP_NAME: "CFC Push Gateway Manager",
-  JWT_SECRET: "your-secret-key-change-in-production",
-  JWT_AUDIENCE: "cfc-push-api",
-  JWT_ISSUER: "http://localhost:3001",
-  CORS_ORIGIN: ["http://localhost:8080", "http://localhost:3000"],
-  ALLOWED_IPS: ["127.0.0.1", "::1", "localhost"],
-  LOG_LEVEL: "debug",
-  LOG_DIR: "./logs",
-  ENABLE_AUDIT_LOG: true,
-  SERVERS: {},
-  REQUEST_TIMEOUT: 30000,
-  HEALTH_CHECK_INTERVAL: 30000,
-  ENABLE_METRICS: true,
-  METRICS_PORT: 9090,
-  MONGODB_URI: "",
-  MONGODB_DATABASE: "cfc-push-chatbot",
+// Funções auxiliares para obter valores do .env - SEM FALLBACK
+const getRequiredString = (varName: string): string => {
+  const value = process.env[varName];
+  if (!value || value.trim() === "") {
+    throw new Error(`❌ Variável obrigatória não definida: ${varName}`);
+  }
+  return value.trim();
 };
 
-// Helper para extrair informações do MongoDB Atlas URI
-const extractMongoDBInfo = (uri: string | undefined): { database: string } => {
-  const defaultDatabase = "cfc-push-chatbot";
+const getRequiredNumber = (varName: string): number => {
+  const value = getRequiredString(varName);
+  const num = parseInt(value);
+  if (isNaN(num)) {
+    throw new Error(`❌ Variável ${varName} deve ser um número: ${value}`);
+  }
+  return num;
+};
 
-  if (!uri) return { database: defaultDatabase };
+const getRequiredBoolean = (varName: string): boolean => {
+  const value = getRequiredString(varName);
+  if (value !== "true" && value !== "false") {
+    throw new Error(
+      `❌ Variável ${varName} deve ser 'true' ou 'false': ${value}`
+    );
+  }
+  return value === "true";
+};
 
-  try {
-    // Extrair database da URI - método mais robusto
-    const dbNameMatch = uri.match(/\/([^/?]+)(?:\?|$)/);
-    if (dbNameMatch && dbNameMatch[1]) {
-      return { database: dbNameMatch[1] };
+const getRequiredArray = (
+  varName: string,
+  separator: string = ","
+): string[] => {
+  const value = getRequiredString(varName);
+  return value
+    .split(separator)
+    .map((item) => item.trim())
+    .filter((item) => item);
+};
+
+// Validação das variáveis de ambiente obrigatórias
+const validateEnvironment = (): void => {
+  // Lista de variáveis que DEVEM estar no .env
+  const requiredEnvVars = [
+    // Ambiente do Gateway
+    "PORT",
+    "NODE_ENV",
+    "HOST",
+    "APP_NAME",
+
+    // Segurança
+    "JWT_SECRET",
+    "JWT_AUDIENCE",
+    "JWT_ISSUER",
+    "CORS_ORIGIN",
+    "ALLOWED_IPS",
+
+    // Logging
+    "LOG_LEVEL",
+    "LOG_DIR",
+    "ENABLE_AUDIT_LOG",
+
+    // Timeouts
+    "REQUEST_TIMEOUT",
+    "HEALTH_CHECK_INTERVAL",
+
+    // Monitoramento
+    "ENABLE_METRICS",
+    "METRICS_PORT",
+
+    // MongoDB
+    "MONGODB_URI",
+    "MONGODB_DATABASE",
+    "MONGODB_MAX_POOL_SIZE",
+    "MONGODB_SERVER_SELECTION_TIMEOUT",
+    "MONGODB_SOCKET_TIMEOUT",
+
+    // Gateway
+    "PROXY_TIMEOUT",
+
+    // Microserviços
+    "MANAGEMENT_URL",
+    "NOTIFY_URL",
+    "MONITORING_URL",
+    "CHATBOT_URL",
+  ];
+
+  const missingVars = requiredEnvVars.filter(
+    (varName) => !process.env[varName]
+  );
+
+  if (missingVars.length > 0) {
+    throw new Error(
+      `❌ Variáveis de ambiente ausentes: ${missingVars.join(", ")}`
+    );
+  }
+
+  // Validações numéricas
+  const port = parseInt(process.env.PORT!);
+  if (isNaN(port) || port < 1 || port > 65535) {
+    throw new Error(`❌ PORT inválido: ${process.env.PORT}`);
+  }
+
+  // Validação de URLs dos serviços
+  const serviceUrlVars = [
+    "MANAGEMENT_URL",
+    "NOTIFY_URL",
+    "MONITORING_URL",
+    "CHATBOT_URL",
+  ];
+  serviceUrlVars.forEach((varName) => {
+    const url = process.env[varName]!;
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      throw new Error(
+        `❌ ${varName} deve ser uma URL válida (começar com http:// ou https://): ${url}`
+      );
     }
 
-    return { database: defaultDatabase };
-  } catch {
-    return { database: defaultDatabase };
+    try {
+      new URL(url);
+    } catch {
+      throw new Error(`❌ ${varName} é uma URL inválida: ${url}`);
+    }
+  });
+};
+
+// Executar validação
+validateEnvironment();
+
+// Configuração dos serviços
+const parseAndCreateServerConfig = (
+  serviceName: string,
+  urlVarName: string
+): ServerConfig => {
+  const serviceUrl = getRequiredString(urlVarName);
+
+  try {
+    const url = new URL(serviceUrl);
+
+    const serviceNames: Record<string, string> = {
+      MANAGEMENT_URL: "Management Service",
+      NOTIFY_URL: "Notification Service",
+      MONITORING_URL: "Monitoring Service",
+      CHATBOT_URL: "Chatbot Service",
+    };
+
+    let port = 80;
+    if (url.port) {
+      port = parseInt(url.port);
+    } else if (url.protocol === "https:") {
+      port = 443;
+    }
+
+    return {
+      name: serviceNames[urlVarName],
+      url: serviceUrl,
+      host: url.hostname,
+      port: port,
+      path: "/health",
+      protocol: url.protocol.replace(":", "") as "http" | "https",
+      timeout: 5000,
+      healthEndpoint: "/health",
+    };
+  } catch (error) {
+    throw new Error(
+      `❌ Falha ao analisar URL do serviço ${urlVarName}: ${serviceUrl}`
+    );
   }
 };
 
-const mongoDBInfo = extractMongoDBInfo(process.env.MONGODB_URI);
-
-// Serviços disponíveis (APENAS SERVIÇOS HTTP)
 const servicesConfig: Record<string, ServerConfig> = {
-  // Gateway principal
-  gateway: {
-    name: "Gateway",
-    host: process.env.GATEWAY_HOST || "localhost",
-    port: parseInt(process.env.GATEWAY_PORT || "3001"),
-    path: "/health",
-    protocol: "http",
-    timeout: 5000,
-  },
-
-  // Serviço de Chatbot
-  chatbot: {
-    name: "Chatbot Service",
-    host: process.env.CHATBOT_HOST || "localhost",
-    port: parseInt(process.env.CHATBOT_PORT || "3000"),
-    path: "/health",
-    protocol: "http",
-    timeout: 5000,
-  },
-
-  // Serviço de Gerenciamento
-  management: {
-    name: "Management Service",
-    host: process.env.MANAGEMENT_HOST || "localhost",
-    port: parseInt(process.env.MANAGEMENT_PORT || "3003"),
-    path: "/health",
-    protocol: "http",
-    timeout: 5000,
-  },
-
-  // Serviço de Monitoramento
-  monitoring: {
-    name: "Monitoring Service",
-    host: process.env.MONITORING_HOST || "localhost",
-    port: parseInt(process.env.MONITORING_PORT || "3004"),
-    path: "/health",
-    protocol: "http",
-    timeout: 5000,
-  },
-
-  // Serviço de Notificações
-  notify: {
-    name: "Notification Service",
-    host: process.env.NOTIFY_HOST || "localhost",
-    port: parseInt(process.env.NOTIFY_PORT || "3002"),
-    path: "/health",
-    protocol: "http",
-    timeout: 5000,
-  },
+  management: parseAndCreateServerConfig("management", "MANAGEMENT_URL"),
+  notify: parseAndCreateServerConfig("notify", "NOTIFY_URL"),
+  monitoring: parseAndCreateServerConfig("monitoring", "MONITORING_URL"),
+  chatbot: parseAndCreateServerConfig("chatbot", "CHATBOT_URL"),
 };
 
-// Configuração completa
+// Configuração completa - APENAS valores do .env
 const config: AppConfig = {
   // Ambiente
-  NODE_ENV:
-    (process.env.NODE_ENV as "development" | "production" | "test") ||
-    defaultConfig.NODE_ENV,
-  PORT: parseInt(process.env.PORT || defaultConfig.PORT.toString()),
-  HOST: process.env.HOST || defaultConfig.HOST,
-  APP_NAME: process.env.APP_NAME || defaultConfig.APP_NAME,
+  NODE_ENV: getRequiredString("NODE_ENV"),
+  PORT: getRequiredNumber("PORT"),
+  HOST: getRequiredString("HOST"),
+  APP_NAME: getRequiredString("APP_NAME"),
 
   // Segurança
-  JWT_SECRET: process.env.JWT_SECRET || defaultConfig.JWT_SECRET,
-  JWT_AUDIENCE: process.env.JWT_AUDIENCE || defaultConfig.JWT_AUDIENCE,
-  JWT_ISSUER: process.env.JWT_ISSUER || defaultConfig.JWT_ISSUER,
-  CORS_ORIGIN: process.env.CORS_ORIGIN?.split(",") || defaultConfig.CORS_ORIGIN,
-  ALLOWED_IPS: process.env.ALLOWED_IPS?.split(",") || defaultConfig.ALLOWED_IPS,
+  JWT_SECRET: getRequiredString("JWT_SECRET"),
+  JWT_AUDIENCE: getRequiredString("JWT_AUDIENCE"),
+  JWT_ISSUER: getRequiredString("JWT_ISSUER"),
+  CORS_ORIGIN: getRequiredArray("CORS_ORIGIN"),
+  ALLOWED_IPS: getRequiredArray("ALLOWED_IPS"),
 
   // Logging
-  LOG_LEVEL:
-    (process.env.LOG_LEVEL as "error" | "warn" | "info" | "debug") ||
-    defaultConfig.LOG_LEVEL,
-  LOG_DIR: process.env.LOG_DIR || defaultConfig.LOG_DIR,
-  ENABLE_AUDIT_LOG:
-    process.env.ENABLE_AUDIT_LOG === "true" || defaultConfig.ENABLE_AUDIT_LOG,
+  LOG_LEVEL: getRequiredString("LOG_LEVEL"),
+  LOG_DIR: getRequiredString("LOG_DIR"),
+  ENABLE_AUDIT_LOG: getRequiredBoolean("ENABLE_AUDIT_LOG"),
 
-  // Servidores (APENAS serviços HTTP)
+  // Servidores
   SERVERS: servicesConfig,
 
   // Timeouts
-  REQUEST_TIMEOUT: parseInt(
-    process.env.REQUEST_TIMEOUT || defaultConfig.REQUEST_TIMEOUT.toString()
-  ),
-  HEALTH_CHECK_INTERVAL: parseInt(
-    process.env.HEALTH_CHECK_INTERVAL ||
-      defaultConfig.HEALTH_CHECK_INTERVAL.toString()
-  ),
+  REQUEST_TIMEOUT: getRequiredNumber("REQUEST_TIMEOUT"),
+  HEALTH_CHECK_INTERVAL: getRequiredNumber("HEALTH_CHECK_INTERVAL"),
 
   // Monitoramento
-  ENABLE_METRICS:
-    process.env.ENABLE_METRICS === "true" || defaultConfig.ENABLE_METRICS,
-  METRICS_PORT: parseInt(
-    process.env.METRICS_PORT || defaultConfig.METRICS_PORT.toString()
-  ),
+  ENABLE_METRICS: getRequiredBoolean("ENABLE_METRICS"),
+  METRICS_PORT: getRequiredNumber("METRICS_PORT"),
 
-  // MongoDB Atlas
-  MONGODB_URI: process.env.MONGODB_URI || defaultConfig.MONGODB_URI,
-  MONGODB_DATABASE: mongoDBInfo.database,
+  // MongoDB
+  MONGODB_URI: getRequiredString("MONGODB_URI"),
+  MONGODB_DATABASE: getRequiredString("MONGODB_DATABASE"),
+  MONGODB_MAX_POOL_SIZE: getRequiredNumber("MONGODB_MAX_POOL_SIZE"),
+  MONGODB_SERVER_SELECTION_TIMEOUT: getRequiredNumber(
+    "MONGODB_SERVER_SELECTION_TIMEOUT"
+  ),
+  MONGODB_SOCKET_TIMEOUT: getRequiredNumber("MONGODB_SOCKET_TIMEOUT"),
+
+  // Gateway
+  PROXY_TIMEOUT: getRequiredNumber("PROXY_TIMEOUT"),
 };
 
-// Validação da configuração
-if (config.NODE_ENV === "production") {
-  if (
-    !config.JWT_SECRET ||
-    config.JWT_SECRET === "your-secret-key-change-in-production"
-  ) {
-    throw new Error("JWT_SECRET must be set in production environment");
-  }
+// NÃO VERIFICA valor do JWT_SECRET - usa EXATAMENTE o que está no .env
+// Se o usuário quiser usar "your-secret-key-change-in-production" em produção, problema dele
 
-  if (!process.env.CORS_ORIGIN) {
-    console.warn(
-      "⚠️  CORS_ORIGIN not set in production. Using default localhost origins"
-    );
-  }
-
-  if (
-    !process.env.ALLOWED_IPS ||
-    process.env.ALLOWED_IPS === "127.0.0.1,::1,localhost"
-  ) {
-    console.warn("⚠️  ALLOWED_IPS not properly configured in production");
-  }
-
-  // Validação do MongoDB Atlas em produção
-  if (!config.MONGODB_URI) {
-    throw new Error("MONGODB_URI must be set in production environment");
-  }
-
-  if (!config.MONGODB_URI.includes("mongodb+srv://")) {
-    console.warn(
-      "⚠️  MONGODB_URI seems to be using local MongoDB instead of Atlas"
-    );
-  }
-}
-
-// Log de configuração (apenas desenvolvimento)
-if (config.NODE_ENV === "development") {
-  console.log("=".repeat(50));
-  console.log("⚙️  CONFIGURAÇÃO DO GATEWAY");
-  console.log("=".repeat(50));
-  console.log(`🌍 Ambiente: ${config.NODE_ENV}`);
-  console.log(`📡 Porta: ${config.PORT}`);
-  console.log(`🔗 Serviços monitorados: ${Object.keys(config.SERVERS).length}`);
-  console.log(
-    `🗄️  MongoDB Atlas: ${
-      config.MONGODB_URI ? "✅ Configurado" : "❌ Não configurado"
-    }`
-  );
-  if (config.MONGODB_URI) {
-    const maskedURI = config.MONGODB_URI.replace(
-      /\/\/([^:]+):([^@]+)@/,
-      "//***:***@"
-    );
-    console.log(`   Database: ${config.MONGODB_DATABASE}`);
-  }
-  console.log("=".repeat(50));
-}
+// Log de configuração
+console.log("=".repeat(50));
+console.log("⚙️  CONFIGURAÇÃO DO GATEWAY");
+console.log("=".repeat(50));
+console.log(`🌍 Ambiente: ${config.NODE_ENV}`);
+console.log(`📡 Porta: ${config.PORT}`);
+console.log(`🏠 Host: ${config.HOST}`);
+console.log(`📛 Nome: ${config.APP_NAME}`);
+console.log(`🔗 Serviços configurados: ${Object.keys(config.SERVERS).length}`);
+console.log("=".repeat(50));
+console.log("🔌 URLs dos Microserviços:");
+Object.entries(config.SERVERS).forEach(([key, service]) => {
+  console.log(`  • ${service.name}: ${service.url}`);
+});
+console.log("=".repeat(50));
 
 export default config;

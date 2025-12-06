@@ -56,7 +56,7 @@ export class ServerManager {
       axiosInstance.interceptors.request.use(
         (request: any) => {
           console.debug(
-            `🔄 [${key}] Request to: ${request.baseURL}${request.url}`
+            `[${key}] Request to: ${request.baseURL}${request.url}`
           );
           return request;
         },
@@ -88,10 +88,26 @@ export class ServerManager {
     };
 
     try {
+      // ✅ ROTAS DE HEALTH CORRETAS PARA CADA SERVIÇO
+      const getHealthPath = (key: string): string => {
+        switch (key) {
+          case 'chatbot':
+            return '/api/chatbot/health';  // ✅ Chatbot tem rota específica
+          case 'management':
+            return '/health';  // ✅ Management agora tem /health
+          case 'monitoring':
+            return '/health';  // ⚠️ Verificar se Monitoring tem /health
+          case 'notify':
+            return '/health';  // ⚠️ Verificar se Notify tem /health
+          default:
+            return server.path || '/health';
+        }
+      };
+
+      const healthPath = getHealthPath(serverKey);
+
       const response = await axios.get<HealthCheckResponse>(
-        `${server.protocol}://${server.host}:${server.port}${
-          server.path || "/health"
-        }`,
+        `${server.protocol}://${server.host}:${server.port}${healthPath}`,
         {
           timeout: server.timeout,
           headers: {
@@ -116,7 +132,7 @@ export class ServerManager {
         }
       }
 
-      console.log(`✅ [${serverKey}] ${server.name} is UP (${responseTime}ms)`);
+      console.log(`[${serverKey}] ${server.name} is UP (${responseTime}ms)`);
     } catch (error: any) {
       const responseTime = Date.now() - startTime;
 
@@ -125,7 +141,7 @@ export class ServerManager {
       status.error = error?.message || "Unknown error";
 
       console.error(
-        `❌ [${serverKey}] ${server.name} is DOWN:`,
+        `[${serverKey}] ${server.name} is DOWN:`,
         error?.message || error
       );
     }
@@ -138,7 +154,7 @@ export class ServerManager {
    * Verificar saúde de todos os servidores
    */
   async checkAllServers(): Promise<Record<string, ServerStatus>> {
-    console.log("🔄 Checking all servers health...");
+    console.log("Checking all servers health...");
 
     const checks = Array.from(this.servers.keys()).map(async (key) => {
       return await this.checkServerHealth(key);
@@ -175,7 +191,7 @@ export class ServerManager {
     const totalCount = Object.keys(statusMap).length;
 
     console.log(
-      `📊 Health check summary: ${upCount}/${totalCount} services UP`
+      `Health check summary: ${upCount}/${totalCount} services UP`
     );
 
     return statusMap;
@@ -191,7 +207,7 @@ export class ServerManager {
 
     this.checkInterval = setInterval(async () => {
       try {
-        console.log("🔄 Running scheduled health checks...");
+        console.log("Running scheduled health checks...");
         await this.checkAllServers();
       } catch (error: any) {
         console.error("Error in health check interval:", error);
@@ -199,7 +215,7 @@ export class ServerManager {
     }, config.HEALTH_CHECK_INTERVAL);
 
     console.log(
-      `🔄 Health checks started (interval: ${config.HEALTH_CHECK_INTERVAL}ms)`
+      `Health checks started (interval: ${config.HEALTH_CHECK_INTERVAL}ms)`
     );
   }
 
@@ -210,7 +226,7 @@ export class ServerManager {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = undefined;
-      console.log("🛑 Health checks stopped");
+      console.log("Health checks stopped");
     }
   }
 
@@ -261,7 +277,7 @@ export class ServerManager {
       console.error(`Failed to check health of new server ${key}:`, error);
     });
 
-    console.log(`➕ Added server: ${key} (${serverConfig.name})`);
+    console.log(`Added server: ${key} (${serverConfig.name})`);
   }
 
   /**
@@ -270,7 +286,7 @@ export class ServerManager {
   removeServer(key: string): void {
     const server = this.servers.get(key);
     if (!server) {
-      console.warn(`⚠️ Server ${key} not found for removal`);
+      console.warn(`Server ${key} not found for removal`);
       return;
     }
 
@@ -278,7 +294,7 @@ export class ServerManager {
     this.axiosInstances.delete(key);
     this.statuses.delete(key);
 
-    console.log(`➖ Removed server: ${key} (${server.name})`);
+    console.log(`Removed server: ${key} (${server.name})`);
   }
 
   /**
@@ -287,7 +303,7 @@ export class ServerManager {
   updateServer(key: string, updates: Partial<ServerConfig>): boolean {
     const server = this.servers.get(key);
     if (!server) {
-      console.warn(`⚠️ Server ${key} not found for update`);
+      console.warn(`Server ${key} not found for update`);
       return false;
     }
 
@@ -308,7 +324,7 @@ export class ServerManager {
       this.axiosInstances.set(key, axiosInstance);
     }
 
-    console.log(`✏️ Updated server: ${key}`);
+    console.log(`Updated server: ${key}`);
     return true;
   }
 
@@ -373,7 +389,7 @@ export class ServerManager {
    * Reinicializar todas as instâncias (útil após mudanças de configuração)
    */
   reinitialize(): void {
-    console.log("🔄 Reinitializing all server instances...");
+    console.log("Reinitializing all server instances...");
 
     // Parar verificações de saúde
     this.stopHealthChecks();
@@ -388,7 +404,7 @@ export class ServerManager {
     // Reiniciar verificações
     this.startHealthChecks();
 
-    console.log("✅ Server instances reinitialized");
+    console.log("Server instances reinitialized");
   }
 }
 

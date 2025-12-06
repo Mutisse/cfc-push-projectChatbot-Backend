@@ -10,17 +10,51 @@ dotenv.config();
 class Server {
   private app: App;
   private port: number;
+  private nodeEnv: string;
   private server: any;
 
   constructor() {
+    // Validação das variáveis de ambiente obrigatórias
+    this.validateEnvironment();
+
     this.app = new App();
-    this.port = parseInt(process.env.PORT!);
+    this.port = this.getValidatedPort();
+    this.nodeEnv = this.getValidatedNodeEnv();
     this.server = null;
+  }
+
+  private validateEnvironment(): void {
+    // Variáveis obrigatórias
+    const requiredVars = ["PORT", "NODE_ENV", "MONGODB_URI"];
+    const missingVars = requiredVars.filter(
+      (varName) => !process.env[varName] || process.env[varName]!.trim() === ""
+    );
+
+    if (missingVars.length > 0) {
+      throw new Error(
+        `Variáveis de ambiente obrigatórias ausentes: ${missingVars.join(", ")}`
+      );
+    }
+  }
+
+  private getValidatedPort(): number {
+    const portString = process.env.PORT!;
+    const port = parseInt(portString);
+
+    if (isNaN(port) || port < 1 || port > 65535) {
+      throw new Error(`PORT inválido: ${portString}`);
+    }
+
+    return port;
+  }
+
+  private getValidatedNodeEnv(): string {
+    return process.env.NODE_ENV!;
   }
 
   public async start(): Promise<void> {
     try {
-      console.log("🚀 Iniciando Management API...");
+      console.log("Iniciando Management API...");
 
       // Conectar ao banco primeiro
       await database.connect();
@@ -30,63 +64,46 @@ class Server {
 
       // Depois iniciar servidor HTTP
       this.server = this.app.getApp().listen(this.port, () => {
-        console.log("✅ Management API iniciada com sucesso!");
-        console.log(`📍 Porta: ${this.port}`);
-        console.log(`🌐 Ambiente: ${process.env.NODE_ENV || "development"}`);
+        console.log(`✅ Management API rodando na porta: ${this.port}`);
+        console.log(`🌐 Ambiente: ${this.nodeEnv}`);
         console.log(`📊 Database: ${database.getStatus()}`);
-        console.log(`⏰ ${new Date().toLocaleString()}`);
       });
 
       // Graceful shutdown
       this.setupGracefulShutdown();
     } catch (error) {
-      console.error("❌ Falha ao iniciar o servidor:", error);
+      console.error("Falha ao iniciar o servidor:", error);
       process.exit(1);
     }
   }
 
-  // ✅ NOVO MÉTODO: Executar seed automaticamente
-  // src/server.ts - APENAS o método que precisa ser atualizado
   private async runSeedsIfNeeded(): Promise<void> {
     try {
-      console.log("🌱 Verificando necessidade de seeds...");
-
       // 1. Seed de Menus
       const menuSeeder = new MenuSeeder();
       const shouldSeedMenus = await menuSeeder.shouldSeed();
 
       if (shouldSeedMenus) {
-        console.log("📋 Executando seed de menus...");
         await menuSeeder.seed();
-        console.log("✅ Seed de menus concluído!");
-      } else {
-        console.log("✅ Menus já estão populados.");
       }
 
-      // 2. Seed do Admin Root (SEMPRE executar a verificação)
-      console.log("🔍 Verificando admin root...");
+      // 2. Seed do Admin Root
       const adminSeeder = new RootAdminSeeder();
       await adminSeeder.seedRootAdmin();
-
-      console.log("🎉 Todos os seeds verificados!");
     } catch (error) {
-      console.error("❌ Erro ao executar seeds automáticos:", error);
+      console.error("Erro ao executar seeds:", error);
     }
   }
 
   public async shutdown(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.server) {
-        console.log("⚠️ Servidor não está rodando");
         resolve();
         return;
       }
 
-      console.log("🛑 Encerrando servidor...");
-
       this.server.close(async (err: any) => {
         if (err) {
-          console.error("❌ Erro ao fechar servidor:", err);
           reject(err);
           return;
         }
@@ -94,24 +111,20 @@ class Server {
         try {
           await database.disconnect();
           this.server = null;
-          console.log("✅ Servidor encerrado com sucesso");
           resolve();
         } catch (error) {
-          console.error("❌ Erro ao desconectar do banco:", error);
           reject(error);
         }
       });
 
       // Force close after 10 seconds
       setTimeout(() => {
-        console.error("⚠️ Forçando encerramento do servidor...");
         reject(new Error("Timeout ao encerrar servidor"));
       }, 10000);
     });
   }
 
   public async restart(): Promise<void> {
-    console.log("🔄 Reiniciando servidor...");
     await this.shutdown();
     await new Promise((resolve) => setTimeout(resolve, 1000));
     await this.start();
@@ -119,17 +132,13 @@ class Server {
 
   private setupGracefulShutdown(): void {
     const shutdownHandler = async (signal: string) => {
-      console.log(`\n${signal} recebido. Encerrando servidor graciosamente...`);
       await this.shutdown();
       process.exit(0);
     };
 
     process.on("SIGTERM", () => shutdownHandler("SIGTERM"));
     process.on("SIGINT", () => shutdownHandler("SIGINT"));
-
-    // Para desenvolvimento: reiniciar com nodemon
     process.on("SIGUSR2", async () => {
-      console.log("\n🔄 Reinício por nodemon detectado...");
       await this.shutdown();
       process.exit(0);
     });
@@ -142,12 +151,57 @@ class Server {
   public getPort(): number {
     return this.port;
   }
+
+  public getNodeEnv(): string {
+    return this.nodeEnv;
+  }
 }
+
+// Validação global das variáveis de ambiente
+const validateGlobalEnvironment = (): void => {
+  const requiredVars = [
+    "PORT",
+    "NODE_ENV",
+    "MONGODB_URI",
+    "JWT_SECRET",
+    "JWT_REFRESH_SECRET",
+  ];
+
+  const missingVars = requiredVars.filter(
+    (varName) => !process.env[varName] || process.env[varName]!.trim() === ""
+  );
+
+  if (missingVars.length > 0) {
+    console.error(
+      `Variáveis de ambiente obrigatórias ausentes: ${missingVars.join(", ")}`
+    );
+    process.exit(1);
+  }
+
+  // Validações específicas
+  const port = parseInt(process.env.PORT!);
+  if (isNaN(port) || port < 1 || port > 65535) {
+    console.error(`PORT inválido: ${process.env.PORT}`);
+    process.exit(1);
+  }
+
+  const validEnvs = ["development", "production", "test"];
+  if (!validEnvs.includes(process.env.NODE_ENV!)) {
+    console.error(`NODE_ENV inválido: ${process.env.NODE_ENV}`);
+    process.exit(1);
+  }
+};
+
+// Executar validação global antes de iniciar
+validateGlobalEnvironment();
 
 // Iniciar servidor se executado diretamente
 if (require.main === module) {
   const server = new Server();
-  server.start().catch(console.error);
+  server.start().catch((error) => {
+    console.error("Erro ao iniciar servidor:", error);
+    process.exit(1);
+  });
 }
 
 export default Server;

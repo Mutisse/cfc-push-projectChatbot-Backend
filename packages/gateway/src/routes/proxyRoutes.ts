@@ -1,39 +1,91 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { createProxyMiddleware, Options } from "http-proxy-middleware";
 import { proxyLogger } from "../middlewares/proxyLogger";
 
 const router = Router();
 
-// ========== CONFIGURAÇÕES DOS 4 SERVIÇOS (DO .env) ==========
+// ========== VALIDAÇÃO DAS VARIÁVEIS DE AMBIENTE ==========
 
-// Helper para validar URLs
-const getServiceUrl = (
-  envVar: string | undefined,
-  defaultPort: number,
-  defaultPath: string = ""
-): string => {
-  if (envVar) return envVar;
+const validateEnvironment = (): void => {
+  const requiredEnvVars = [
+    'PORT',
+    'NODE_ENV',
+    'HOST',
+    'CHATBOT_URL',
+    'MANAGEMENT_URL',
+    'MONITORING_URL',
+    'NOTIFY_URL',
+    'PROXY_TIMEOUT'
+  ];
 
-  const host =
-    process.env.NODE_ENV === "production"
-      ? process.env.HOST || "localhost"
-      : "localhost";
+  const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
-  return `http://${host}:${defaultPort}${defaultPath}`;
+  if (missingVars.length > 0) {
+    throw new Error(`❌ Variáveis de ambiente ausentes: ${missingVars.join(', ')}`);
+  }
+
+  // Validar URLs
+  const urlVars = ['CHATBOT_URL', 'MANAGEMENT_URL', 'MONITORING_URL', 'NOTIFY_URL'];
+  urlVars.forEach(varName => {
+    const url = process.env[varName]!;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      throw new Error(`❌ ${varName} deve ser uma URL válida: ${url}`);
+    }
+  });
+
+  // Validar números
+  const numberVars = ['PORT', 'PROXY_TIMEOUT'];
+  numberVars.forEach(varName => {
+    const value = parseInt(process.env[varName]!);
+    if (isNaN(value)) {
+      throw new Error(`❌ ${varName} deve ser um número: ${process.env[varName]}`);
+    }
+  });
 };
 
-// Configurações dos serviços com valores padrão
+// Executar validação
+try {
+  validateEnvironment();
+} catch (error: any) {
+  console.error('❌ ERRO DE CONFIGURAÇÃO:', error.message);
+  process.exit(1);
+}
+
+// ========== FUNÇÕES AUXILIARES ==========
+
+const getRequiredString = (varName: string): string => {
+  const value = process.env[varName];
+  if (!value || value.trim() === '') {
+    throw new Error(`❌ Variável obrigatória não definida: ${varName}`);
+  }
+  return value.trim();
+};
+
+const getRequiredNumber = (varName: string): number => {
+  const value = getRequiredString(varName);
+  const num = parseInt(value);
+  if (isNaN(num)) {
+    throw new Error(`❌ Variável ${varName} deve ser um número: ${value}`);
+  }
+  return num;
+};
+
+const getOptionalString = (varName: string): string => {
+  return process.env[varName]?.trim() || '';
+};
+
+// ========== CONFIGURAÇÕES DOS 4 SERVIÇOS (DO .env) ==========
+
 const proxyConfigs: Record<string, Options> = {
   chatbot: {
-    target: getServiceUrl(process.env.CHATBOT_URL, 3000),
+    target: getRequiredString('CHATBOT_URL'),
     changeOrigin: true,
-    logLevel: process.env.NODE_ENV === "development" ? "debug" : "info",
-    timeout: parseInt(process.env.PROXY_TIMEOUT || "30000"),
-    proxyTimeout: parseInt(process.env.PROXY_TIMEOUT || "30000"),
+    logLevel: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+    timeout: getRequiredNumber('PROXY_TIMEOUT'),
+    proxyTimeout: getRequiredNumber('PROXY_TIMEOUT'),
     pathRewrite: {
       "^/api/chatbot": "",
     },
-    // Corrigir o onProxyReq removendo a verificação bodyRead
     onProxyReq: (proxyReq, req) => {
       proxyReq.setHeader("X-Gateway-Service", "chatbot");
       proxyReq.setHeader("X-Gateway-Timestamp", Date.now().toString());
@@ -43,17 +95,12 @@ const proxyConfigs: Record<string, Options> = {
       );
       proxyReq.setHeader("X-Forwarded-Host", req.headers.host || "");
 
-      // Adicionar API Key para serviços internos
-      if (process.env.CHATBOT_API_KEY) {
-        proxyReq.setHeader("X-API-Key", process.env.CHATBOT_API_KEY);
+      const apiKey = getOptionalString('CHATBOT_API_KEY');
+      if (apiKey) {
+        proxyReq.setHeader("X-API-Key", apiKey);
       }
 
-      // Se for POST/PUT/PATCH e tiver body, enviar body corretamente
-      if (
-        req.method === "POST" ||
-        req.method === "PUT" ||
-        req.method === "PATCH"
-      ) {
+      if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
         if (req.body) {
           const bodyData = JSON.stringify(req.body);
           proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
@@ -68,27 +115,21 @@ const proxyConfigs: Record<string, Options> = {
     },
     onError: (err, req, res) => {
       console.error("[PROXY ERROR] Chatbot:", err.message);
-
-      // Log para audit
-      if ((req as any).auditLogId) {
-        // Atualizar log de auditoria se existir
-      }
-
       res.status(502).json({
         error: "Bad Gateway",
         message: "Chatbot service is not responding",
         service: "chatbot",
-        target: getServiceUrl(process.env.CHATBOT_URL, 3000),
+        target: getRequiredString('CHATBOT_URL'),
         timestamp: new Date().toISOString(),
       });
     },
   },
   management: {
-    target: getServiceUrl(process.env.MANAGEMENT_URL, 3003),
+    target: getRequiredString('MANAGEMENT_URL'),
     changeOrigin: true,
-    logLevel: process.env.NODE_ENV === "development" ? "debug" : "info",
-    timeout: parseInt(process.env.PROXY_TIMEOUT || "30000"),
-    proxyTimeout: parseInt(process.env.PROXY_TIMEOUT || "30000"),
+    logLevel: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+    timeout: getRequiredNumber('PROXY_TIMEOUT'),
+    proxyTimeout: getRequiredNumber('PROXY_TIMEOUT'),
     pathRewrite: {
       "^/api/management": "",
     },
@@ -101,8 +142,9 @@ const proxyConfigs: Record<string, Options> = {
       );
       proxyReq.setHeader("X-Forwarded-Host", req.headers.host || "");
 
-      if (process.env.MANAGEMENT_API_KEY) {
-        proxyReq.setHeader("X-API-Key", process.env.MANAGEMENT_API_KEY);
+      const apiKey = getOptionalString('MANAGEMENT_API_KEY');
+      if (apiKey) {
+        proxyReq.setHeader("X-API-Key", apiKey);
       }
     },
     onProxyRes: (proxyRes, req, res) => {
@@ -116,17 +158,17 @@ const proxyConfigs: Record<string, Options> = {
         error: "Bad Gateway",
         message: "Management service is not responding",
         service: "management",
-        target: getServiceUrl(process.env.MANAGEMENT_URL, 3003),
+        target: getRequiredString('MANAGEMENT_URL'),
         timestamp: new Date().toISOString(),
       });
     },
   },
   monitoring: {
-    target: getServiceUrl(process.env.MONITORING_URL, 3004),
+    target: getRequiredString('MONITORING_URL'),
     changeOrigin: true,
-    logLevel: process.env.NODE_ENV === "development" ? "debug" : "info",
-    timeout: parseInt(process.env.PROXY_TIMEOUT || "30000"),
-    proxyTimeout: parseInt(process.env.PROXY_TIMEOUT || "30000"),
+    logLevel: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+    timeout: getRequiredNumber('PROXY_TIMEOUT'),
+    proxyTimeout: getRequiredNumber('PROXY_TIMEOUT'),
     pathRewrite: {
       "^/api/monitoring": "",
     },
@@ -139,8 +181,9 @@ const proxyConfigs: Record<string, Options> = {
       );
       proxyReq.setHeader("X-Forwarded-Host", req.headers.host || "");
 
-      if (process.env.MONITORING_API_KEY) {
-        proxyReq.setHeader("X-API-Key", process.env.MONITORING_API_KEY);
+      const apiKey = getOptionalString('MONITORING_API_KEY');
+      if (apiKey) {
+        proxyReq.setHeader("X-API-Key", apiKey);
       }
     },
     onProxyRes: (proxyRes, req, res) => {
@@ -154,17 +197,17 @@ const proxyConfigs: Record<string, Options> = {
         error: "Bad Gateway",
         message: "Monitoring service is not responding",
         service: "monitoring",
-        target: getServiceUrl(process.env.MONITORING_URL, 3004),
+        target: getRequiredString('MONITORING_URL'),
         timestamp: new Date().toISOString(),
       });
     },
   },
   notify: {
-    target: getServiceUrl(process.env.NOTIFY_URL, 3002),
+    target: getRequiredString('NOTIFY_URL'),
     changeOrigin: true,
-    logLevel: process.env.NODE_ENV === "development" ? "debug" : "info",
-    timeout: parseInt(process.env.PROXY_TIMEOUT || "30000"),
-    proxyTimeout: parseInt(process.env.PROXY_TIMEOUT || "30000"),
+    logLevel: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+    timeout: getRequiredNumber('PROXY_TIMEOUT'),
+    proxyTimeout: getRequiredNumber('PROXY_TIMEOUT'),
     pathRewrite: {
       "^/api/notify": "",
     },
@@ -177,8 +220,9 @@ const proxyConfigs: Record<string, Options> = {
       );
       proxyReq.setHeader("X-Forwarded-Host", req.headers.host || "");
 
-      if (process.env.NOTIFY_API_KEY) {
-        proxyReq.setHeader("X-API-Key", process.env.NOTIFY_API_KEY);
+      const apiKey = getOptionalString('NOTIFY_API_KEY');
+      if (apiKey) {
+        proxyReq.setHeader("X-API-Key", apiKey);
       }
     },
     onProxyRes: (proxyRes, req, res) => {
@@ -192,45 +236,26 @@ const proxyConfigs: Record<string, Options> = {
         error: "Bad Gateway",
         message: "Notify service is not responding",
         service: "notify",
-        target: getServiceUrl(process.env.NOTIFY_URL, 3002),
+        target: getRequiredString('NOTIFY_URL'),
         timestamp: new Date().toISOString(),
       });
     },
   },
 };
 
-// ========== VALIDAÇÃO DAS CONFIGURAÇÕES ==========
+// ========== CRIAR PROXIES ==========
 
-// Verificar se todos os targets estão definidos
-Object.entries(proxyConfigs).forEach(([service, config]) => {
-  if (!config.target) {
-    console.error(
-      `❌ ERRO CRÍTICO: Target não definido para o serviço ${service}`
-    );
-    throw new Error(`Target não definido para ${service}`);
-  }
-  console.log(`✅ Proxy configurado para ${service}: ${config.target}`);
-});
-
-// ========== CRIAR PROXIES COM LOGGING ==========
-
-// Middleware para configurar os proxies dinamicamente
 const setupProxy = (service: string, config: Options) => {
   return createProxyMiddleware({
     ...config,
     onProxyReq: (proxyReq, req, res) => {
-      // Log inicial
-      console.log(
-        `[${service}] ${req.method} ${req.originalUrl} → ${config.target}`
-      );
+      console.log(`[${service}] ${req.method} ${req.originalUrl} → ${config.target}`);
 
-      // Executar callback original se existir
       if (typeof config.onProxyReq === "function") {
         (config.onProxyReq as any)(proxyReq, req, res);
       }
     },
     onProxyRes: (proxyRes, req, res) => {
-      // Executar callback original se existir
       if (typeof config.onProxyRes === "function") {
         (config.onProxyRes as any)(proxyRes, req, res);
       }
@@ -262,27 +287,32 @@ router.use(
 
 // ========== ROTA DE HEALTH ==========
 
-router.get("/api/gateway/proxies/health", async (req, res) => {
+router.get("/api/gateway/proxies/health", async (req: Request, res: Response) => {
+  // ✅ CORRIGIDO: URLs de health corretas para cada serviço
   const services = [
     {
       name: "chatbot",
-      url: `${getServiceUrl(process.env.CHATBOT_URL, 3000)}/health`,
-      apiKey: process.env.CHATBOT_API_KEY,
+      // ✅ Chatbot usa /api/chatbot/health
+      url: `${getRequiredString('CHATBOT_URL')}/api/chatbot/health`,
+      apiKey: getOptionalString('CHATBOT_API_KEY'),
     },
     {
       name: "management",
-      url: `${getServiceUrl(process.env.MANAGEMENT_URL, 3003)}/health`,
-      apiKey: process.env.MANAGEMENT_API_KEY,
+      // ⚠️ Management: Verificar se é /health ou /api/management/health
+      url: `${getRequiredString('MANAGEMENT_URL')}/health`,
+      apiKey: getOptionalString('MANAGEMENT_API_KEY'),
     },
     {
       name: "monitoring",
-      url: `${getServiceUrl(process.env.MONITORING_URL, 3004)}/health`,
-      apiKey: process.env.MONITORING_API_KEY,
+      // ⚠️ Monitoring: Verificar se é /health ou /api/monitoring/health
+      url: `${getRequiredString('MONITORING_URL')}/health`,
+      apiKey: getOptionalString('MONITORING_API_KEY'),
     },
     {
       name: "notify",
-      url: `${getServiceUrl(process.env.NOTIFY_URL, 3002)}/health`,
-      apiKey: process.env.NOTIFY_API_KEY,
+      // ⚠️ Notify: Verificar se é /health ou /api/notify/health
+      url: `${getRequiredString('NOTIFY_URL')}/health`,
+      apiKey: getOptionalString('NOTIFY_API_KEY'),
     },
   ];
 
@@ -313,9 +343,7 @@ router.get("/api/gateway/proxies/health", async (req, res) => {
           responseTime: duration,
           statusCode: response.status,
           url: service.url,
-          ...(response.ok && responseText
-            ? { details: JSON.parse(responseText) }
-            : {}),
+          ...(response.ok && responseText ? { details: JSON.parse(responseText) } : {}),
         };
       } catch (error: any) {
         return {
@@ -339,18 +367,15 @@ router.get("/api/gateway/proxies/health", async (req, res) => {
         }
   );
 
-  // Verificar se todos os serviços estão saudáveis
-  const allHealthy = servicesStatus.every(
-    (service) => service.status === "healthy"
-  );
+  const allHealthy = servicesStatus.every((service) => service.status === "healthy");
   const gatewayStatus = allHealthy ? "healthy" : "degraded";
 
   res.status(allHealthy ? 200 : 207).json({
     timestamp: new Date().toISOString(),
     gateway: {
       status: gatewayStatus,
-      port: process.env.PORT || 3001,
-      environment: process.env.NODE_ENV || "development",
+      port: getRequiredString('PORT'),
+      environment: getRequiredString('NODE_ENV'),
       uptime: process.uptime(),
     },
     services: servicesStatus,
@@ -366,76 +391,74 @@ router.get("/api/gateway/proxies/health", async (req, res) => {
 
 // ========== ROTA DE CONFIGURAÇÃO ==========
 
-router.get("/api/gateway/config", (req, res) => {
-  const isProduction = process.env.NODE_ENV === "production";
+router.get("/api/gateway/config", (req: Request, res: Response) => {
+  try {
+    const config = {
+      timestamp: new Date().toISOString(),
+      environment: getRequiredString('NODE_ENV'),
+      gateway: {
+        port: getRequiredString('PORT'),
+        node_env: getRequiredString('NODE_ENV'),
+        host: getRequiredString('HOST'),
+        request_timeout: getRequiredString('PROXY_TIMEOUT'),
+      },
+      services: {
+        chatbot: {
+          url: getRequiredString('CHATBOT_URL'),
+          hasApiKey: !!getOptionalString('CHATBOT_API_KEY'),
+          healthEndpoint: '/api/chatbot/health',
+        },
+        management: {
+          url: getRequiredString('MANAGEMENT_URL'),
+          hasApiKey: !!getOptionalString('MANAGEMENT_API_KEY'),
+          healthEndpoint: '/health', // ⚠️ Verificar correto
+        },
+        monitoring: {
+          url: getRequiredString('MONITORING_URL'),
+          hasApiKey: !!getOptionalString('MONITORING_API_KEY'),
+          healthEndpoint: '/health', // ⚠️ Verificar correto
+        },
+        notify: {
+          url: getRequiredString('NOTIFY_URL'),
+          hasApiKey: !!getOptionalString('NOTIFY_API_KEY'),
+          healthEndpoint: '/health', // ⚠️ Verificar correto
+        },
+      },
+    };
 
-  // Configuração segura para exibição
-  const config = {
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development",
-    gateway: {
-      port: process.env.PORT || 3001,
-      node_env: process.env.NODE_ENV,
-      host: process.env.HOST || "localhost",
-      request_timeout: process.env.REQUEST_TIMEOUT || "30000",
-    },
-    services: {
-      chatbot: {
-        url: getServiceUrl(process.env.CHATBOT_URL, 3000),
-        hasApiKey: !!process.env.CHATBOT_API_KEY && !isProduction,
-        status: "configured",
-      },
-      management: {
-        url: getServiceUrl(process.env.MANAGEMENT_URL, 3003),
-        hasApiKey: !!process.env.MANAGEMENT_API_KEY && !isProduction,
-        status: "configured",
-      },
-      monitoring: {
-        url: getServiceUrl(process.env.MONITORING_URL, 3004),
-        hasApiKey: !!process.env.MONITORING_API_KEY && !isProduction,
-        status: "configured",
-      },
-      notify: {
-        url: getServiceUrl(process.env.NOTIFY_URL, 3002),
-        hasApiKey: !!process.env.NOTIFY_API_KEY && !isProduction,
-        status: "configured",
-      },
-    },
-    mongodb: {
-      connected: !!process.env.MONGODB_URI,
-      database: process.env.MONGODB_URI
-        ? process.env.MONGODB_URI.split("/").pop()?.split("?")[0]
-        : null,
-    },
-    features: {
-      audit_log: process.env.ENABLE_AUDIT_LOG === "true",
-      rate_limiting: process.env.NODE_ENV === "production",
-      cors_enabled: true,
-    },
-  };
-
-  res.json(config);
+    res.json(config);
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Erro ao obter configuração',
+      message: error.message
+    });
+  }
 });
 
 // ========== ROTA DE STATUS DOS PROXIES ==========
 
-router.get("/api/gateway/proxies/status", (req, res) => {
-  const proxyStatuses = Object.entries(proxyConfigs).map(
-    ([service, config]) => ({
+router.get("/api/gateway/proxies/status", (req: Request, res: Response) => {
+  try {
+    const proxyStatuses = Object.entries(proxyConfigs).map(([service, config]) => ({
       service,
       target: config.target,
       configured: !!config.target,
       timeout: config.timeout,
       pathRewrite: config.pathRewrite || "none",
-    })
-  );
+    }));
 
-  res.json({
-    timestamp: new Date().toISOString(),
-    proxies: proxyStatuses,
-    total: proxyStatuses.length,
-    configured: proxyStatuses.filter((p) => p.configured).length,
-  });
+    res.json({
+      timestamp: new Date().toISOString(),
+      proxies: proxyStatuses,
+      total: proxyStatuses.length,
+      configured: proxyStatuses.filter((p) => p.configured).length,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Erro ao obter status',
+      message: error.message
+    });
+  }
 });
 
 export default router;
