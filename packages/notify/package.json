@@ -1,0 +1,29 @@
+{
+  "name": "cfc-notify",
+  "version": "1.0.0",
+  "description": "Microserviço de notificações CFC Push",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mongoose": "^7.8.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "twilio": "^4.23.0",
+    "winston": "^3.18.3",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.6",
+    "@types/express": "^4.17.20",
+    "@types/cors": "^2.8.13",
+    "@types/mongoose": "^5.11.97",
+    "typescript": "^5.9.3",
+    "ts-node-dev": "^2.0.0"
+  }
+}
