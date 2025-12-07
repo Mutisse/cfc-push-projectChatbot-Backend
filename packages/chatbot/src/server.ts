@@ -12,7 +12,8 @@ class Server {
   private port: number;
   
   constructor() {
-    this.port = parseInt(env.PORT) || 3000;
+    // CORREÇÃO: Não use parseInt se env.PPORT já é número
+    this.port = env.PORT || 3000;
   }
 
   async start(): Promise<void> {

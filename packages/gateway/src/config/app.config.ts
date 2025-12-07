@@ -24,7 +24,7 @@ export interface AppConfig {
   JWT_SECRET: string;
   JWT_AUDIENCE: string;
   JWT_ISSUER: string;
-  CORS_ORIGIN: string[];
+  CORS_ORIGIN: string | string[] | boolean; // ← ATUALIZADO: pode ser string, array ou boolean
   ALLOWED_IPS: string[];
 
   // Logging
@@ -91,6 +91,35 @@ const getRequiredArray = (
     .split(separator)
     .map((item) => item.trim())
     .filter((item) => item);
+};
+
+// Função para obter CORS_ORIGIN com flexibilidade
+const getCorsOrigin = (): string | string[] | boolean => {
+  const corsOrigin = process.env.CORS_ORIGIN;
+  
+  if (!corsOrigin) {
+    throw new Error("❌ Variável CORS_ORIGIN não definida");
+  }
+
+  const corsValue = corsOrigin.trim();
+  
+  // Se for "true" ou "false" (string)
+  if (corsValue === "true") return true;
+  if (corsValue === "false") return false;
+  
+  // Se for "*" (permite todas as origens)
+  if (corsValue === "*") return "*";
+  
+  // Se contém múltiplas origens separadas por vírgula
+  if (corsValue.includes(",")) {
+    return corsValue
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter((origin) => origin);
+  }
+  
+  // Se for apenas uma origem
+  return corsValue;
 };
 
 // Validação das variáveis de ambiente obrigatórias
@@ -242,7 +271,7 @@ const config: AppConfig = {
   JWT_SECRET: getRequiredString("JWT_SECRET"),
   JWT_AUDIENCE: getRequiredString("JWT_AUDIENCE"),
   JWT_ISSUER: getRequiredString("JWT_ISSUER"),
-  CORS_ORIGIN: getRequiredArray("CORS_ORIGIN"),
+  CORS_ORIGIN: getCorsOrigin(), // ← ATUALIZADO: usa função especial
   ALLOWED_IPS: getRequiredArray("ALLOWED_IPS"),
 
   // Logging
@@ -274,9 +303,6 @@ const config: AppConfig = {
   PROXY_TIMEOUT: getRequiredNumber("PROXY_TIMEOUT"),
 };
 
-// NÃO VERIFICA valor do JWT_SECRET - usa EXATAMENTE o que está no .env
-// Se o usuário quiser usar "your-secret-key-change-in-production" em produção, problema dele
-
 // Log de configuração
 console.log("=".repeat(50));
 console.log("⚙️  CONFIGURAÇÃO DO GATEWAY");
@@ -286,6 +312,7 @@ console.log(`📡 Porta: ${config.PORT}`);
 console.log(`🏠 Host: ${config.HOST}`);
 console.log(`📛 Nome: ${config.APP_NAME}`);
 console.log(`🔗 Serviços configurados: ${Object.keys(config.SERVERS).length}`);
+console.log(`🌐 CORS Origin: ${JSON.stringify(config.CORS_ORIGIN)}`); // ← DEBUG
 console.log("=".repeat(50));
 console.log("🔌 URLs dos Microserviços:");
 Object.entries(config.SERVERS).forEach(([key, service]) => {

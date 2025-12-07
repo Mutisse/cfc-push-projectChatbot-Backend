@@ -1,4 +1,4 @@
-// src/services/SessionService.ts - VERSÃO SIMPLIFICADA FUNCIONAL
+// src/services/SessionService.ts - VERSÃO COMPLETA
 import {
   sessionRepository,
   UserSession as RepositoryUserSession,
@@ -26,11 +26,182 @@ export interface UserSession {
   status: "active" | "completed" | "expired";
 }
 
+// Interface para os métodos que retornam resultados com sucesso
+export interface ServiceResult<T = any> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  error?: string;
+}
+
 export class SessionService {
   private activeSessions = new Map<string, UserSession>();
 
   constructor() {
     console.log("👤 SessionService iniciado - Modo cache em memória");
+  }
+
+  // 🎯 Métodos que faltavam no Controller
+  async startChatbotSession(
+    phoneNumber: string,
+    userId?: string
+  ): Promise<ServiceResult> {
+    try {
+      const session = await this.getOrCreateSession(phoneNumber);
+
+      return {
+        success: true,
+        message: "Sessão iniciada com sucesso",
+        data: {
+          sessionId: session.sessionId,
+          phoneNumber: session.phoneNumber,
+          startTime: session.startTime,
+          status: session.status,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: "Erro ao iniciar sessão",
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+      };
+    }
+  }
+
+  async getActiveSession(
+    phoneNumber: string,
+    serviceType?: string
+  ): Promise<ServiceResult> {
+    try {
+      const session = this.activeSessions.get(phoneNumber);
+
+      if (!session) {
+        return {
+          success: false,
+          message: "Sessão não encontrada",
+        };
+      }
+
+      return {
+        success: true,
+        data: session,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: "Erro ao buscar sessão ativa",
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+      };
+    }
+  }
+
+  async completeSession(
+    sessionId: string,
+    reason?: string
+  ): Promise<ServiceResult> {
+    try {
+      // Encontra a sessão pelo ID
+      let targetPhoneNumber: string | null = null;
+
+      for (const [phoneNumber, session] of this.activeSessions.entries()) {
+        if (session.sessionId === sessionId) {
+          targetPhoneNumber = phoneNumber;
+          break;
+        }
+      }
+
+      if (!targetPhoneNumber) {
+        return {
+          success: false,
+          message: "Sessão não encontrada",
+        };
+      }
+
+      const completed = await this.completeSessionInternal(
+        targetPhoneNumber,
+        reason || "user_completed"
+      );
+
+      return {
+        success: completed,
+        message: completed
+          ? "Sessão finalizada com sucesso"
+          : "Erro ao finalizar sessão",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: "Erro interno ao finalizar sessão",
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+      };
+    }
+  }
+
+  async getSessionStats(): Promise<ServiceResult> {
+    try {
+      const stats = this.getStats();
+
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: "Erro ao obter estatísticas",
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+      };
+    }
+  }
+
+  async getAllSessions(): Promise<ServiceResult> {
+    try {
+      const sessions = Array.from(this.activeSessions.values()).map(
+        (session) => ({
+          id: session.id,
+          sessionId: session.sessionId,
+          phoneNumber: session.phoneNumber,
+          startTime: session.startTime,
+          lastInteraction: session.lastInteraction,
+          status: session.status,
+          context: session.context,
+        })
+      );
+
+      return {
+        success: true,
+        data: sessions,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: "Erro ao listar sessões",
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+      };
+    }
+  }
+
+  // Método interno para completar sessão
+  private async completeSessionInternal(
+    phoneNumber: string,
+    reason: string = "user_completed"
+  ): Promise<boolean> {
+    try {
+      const session = this.activeSessions.get(phoneNumber);
+
+      if (session) {
+        await sessionRepository.completeSession(session.sessionId, reason);
+        this.activeSessions.delete(phoneNumber);
+
+        console.log(`✅ Sessão completada: ${phoneNumber} - ${reason}`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("❌ Erro ao completar sessão:", error);
+      return false;
+    }
   }
 
   // 🎯 Obtém ou cria uma sessão para o usuário
@@ -219,37 +390,51 @@ export class SessionService {
       menuId?: string;
       action?: string;
     }
-  ): Promise<void> {
-    // Executa em background
-    setTimeout(async () => {
-      try {
-        await sessionRepository.recordInteraction(sessionId, interaction);
-      } catch (error) {
-        console.error("❌ Erro ao registrar interação:", error);
-      }
-    }, 0);
-  }
-
-  // 🎯 Completa sessão
-  async completeSession(
-    phoneNumber: string,
-    reason: string = "user_completed"
-  ): Promise<boolean> {
+  ): Promise<ServiceResult> {
     try {
-      const session = this.activeSessions.get(phoneNumber);
+      // Encontra a sessão pelo ID
+      let targetPhoneNumber: string | null = null;
 
-      if (session) {
-        await sessionRepository.completeSession(session.sessionId, reason);
-        this.activeSessions.delete(phoneNumber);
-
-        console.log(`✅ Sessão completada: ${phoneNumber} - ${reason}`);
-        return true;
+      for (const [phoneNumber, session] of this.activeSessions.entries()) {
+        if (session.sessionId === sessionId) {
+          targetPhoneNumber = phoneNumber;
+          break;
+        }
       }
 
-      return false;
+      if (!targetPhoneNumber) {
+        return {
+          success: false,
+          message: "Sessão não encontrada para registrar interação",
+        };
+      }
+
+      // Executa em background
+      setTimeout(async () => {
+        try {
+          await sessionRepository.recordInteraction(sessionId, interaction);
+        } catch (error) {
+          console.error("❌ Erro ao registrar interação no banco:", error);
+        }
+      }, 0);
+
+      // Atualiza cache
+      const session = this.activeSessions.get(targetPhoneNumber);
+      if (session) {
+        session.lastInteraction = new Date();
+        this.activeSessions.set(targetPhoneNumber, session);
+      }
+
+      return {
+        success: true,
+        message: "Interação registrada com sucesso",
+      };
     } catch (error) {
-      console.error("❌ Erro ao completar sessão:", error);
-      return false;
+      return {
+        success: false,
+        message: "Erro ao registrar interação",
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+      };
     }
   }
 
@@ -313,11 +498,13 @@ export class SessionService {
       },
     };
   }
+
   clearAllSessions(): void {
     const count = this.activeSessions.size;
     this.activeSessions.clear();
     console.log(`🧹 ${count} sessões removidas do cache`);
   }
+
   // 🎯 Limpa cache (para desenvolvimento)
   clearCache(): void {
     this.activeSessions.clear();

@@ -1,4 +1,3 @@
-// src/app.ts
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -26,15 +25,60 @@ app.use(
   })
 );
 
-// CORS configurado por ambiente
-app.use(
-  cors({
-    origin: config.CORS_ORIGIN,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  })
-);
+// CONFIGURAÇÃO CORS SIMPLIFICADA E FUNCIONAL
+const corsOptions = {
+  origin: function (origin: any, callback: any) {
+    // Em desenvolvimento, permite tudo
+    if (config.NODE_ENV === "development") {
+      console.log(`🌐 CORS: Permitindo origem ${origin} (dev mode)`);
+      return callback(null, true);
+    }
+    
+    // Em produção, verifica as origens permitidas
+    const allowedOrigins = Array.isArray(config.CORS_ORIGIN) 
+      ? config.CORS_ORIGIN 
+      : [config.CORS_ORIGIN];
+    
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+      callback(null, true);
+    } else {
+      console.log(`🌐 CORS: Origem bloqueada ${origin}`);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type", 
+    "Authorization", 
+    "X-Requested-With",
+    "X-Environment",  // ← ADICIONADO para permitir o header do frontend
+    "X-Client"        // ← ADICIONADO para permitir o header do frontend
+  ],
+  exposedHeaders: [],
+  maxAge: 86400, // 24 horas para cache de preflight
+};
+
+app.use(cors(corsOptions));
+
+// Middleware adicional para garantir headers CORS (opcional)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Headers CORS explícitos
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Environment, X-Client");
+  res.header("Access-Control-Allow-Credentials", "true");
+  
+  // Para preflight OPTIONS
+  if (req.method === "OPTIONS") {
+    console.log("🛰️  Preflight OPTIONS request recebida");
+    console.log("Headers solicitados:", req.headers["access-control-request-headers"]);
+    return res.status(200).end();
+  }
+  
+  next();
+});
 
 // Logging
 const logDir = config.LOG_DIR;
