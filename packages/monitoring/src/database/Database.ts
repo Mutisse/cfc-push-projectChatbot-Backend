@@ -1,4 +1,4 @@
-// src/services/Database.ts
+// packages/monitoring/src/services/Database.ts
 import mongoose from 'mongoose';
 import config from '../config';
 
@@ -25,6 +25,8 @@ class Database {
       const mongoURI = config.MONGO.URI;
       const dbName = config.MONGO.DB_NAME;
       
+      console.log(`🔌 Conectando ao MongoDB: ${dbName}...`);
+      
       await mongoose.connect(mongoURI, {
         ...config.MONGO.OPTIONS,
         dbName
@@ -44,10 +46,9 @@ class Database {
         this.isConnected = false;
       });
 
-      process.on('SIGINT', async () => {
-        await this.disconnect();
-        console.log('🛑 MongoDB connection closed through app termination');
-        process.exit(0);
+      mongoose.connection.on('reconnected', () => {
+        console.log('🔄 MongoDB reconnected');
+        this.isConnected = true;
       });
 
     } catch (error) {
@@ -69,27 +70,25 @@ class Database {
     }
   }
 
-  getConnection(): mongoose.Connection {
-    return mongoose.connection;
-  }
-
   isConnectedToDB(): boolean {
     return this.isConnected && mongoose.connection.readyState === 1;
   }
 
-  // Método utilitário para health check
   async healthCheck(): Promise<boolean> {
     if (!this.isConnectedToDB()) {
       return false;
     }
     
     try {
-      // Executar um comando simples para verificar
       await mongoose.connection.db.command({ ping: 1 });
       return true;
     } catch {
       return false;
     }
+  }
+
+  getConnection(): mongoose.Connection {
+    return mongoose.connection;
   }
 }
 

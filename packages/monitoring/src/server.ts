@@ -1,60 +1,26 @@
+// packages/monitoring/src/server.ts
 import http from 'http';
 import { WebSocketServer } from 'ws';
-import MonitoringApp from './app';
+import { MonitoringApp } from './app';  // ✅ CORRETO
 import config from './config';
-import Database from '../src/database/Database'; // Importar a classe Database
+import Database from './database/Database'; // Caminho corrigido
 
 class MonitoringServer {
-  private app: typeof MonitoringApp;
+  private app: MonitoringApp;
   private server: http.Server | null = null;
   private wss: WebSocketServer | null = null;
-  private port: number;
-  private nodeEnv: string;
   private database: Database;
 
   constructor() {
-    // Valida e obtém APENAS do .env (via config)
-    this.validateEnvironment();
-    
-    this.app = MonitoringApp;
-    this.port = this.getPort();
-    this.nodeEnv = this.getNodeEnv();
-    this.database = Database.getInstance(); // Usar singleton
+    this.app = new MonitoringApp();
+    this.database = Database.getInstance();
     this.setupProcessHandlers();
   }
 
-  private validateEnvironment(): void {
-    // Valida variáveis obrigatórias
-    const requiredVars = ['PORT', 'NODE_ENV'];
-    const missingVars = requiredVars.filter(
-      varName => !process.env[varName] || process.env[varName]!.trim() === ''
-    );
-
-    if (missingVars.length > 0) {
-      throw new Error(`❌ Variáveis de ambiente ausentes no .env: ${missingVars.join(', ')}`);
-    }
-
-    // Validações específicas
-    const port = parseInt(process.env.PORT!);
-    if (isNaN(port) || port < 1 || port > 65535) {
-      throw new Error(`❌ PORT inválido no .env: ${process.env.PORT}`);
-    }
-  }
-
-  private getPort(): number {
-    return parseInt(process.env.PORT!);
-  }
-
-  private getNodeEnv(): string {
-    return process.env.NODE_ENV!;
-  }
-
   private setupProcessHandlers(): void {
-    // Graceful shutdown
     process.on('SIGTERM', () => this.gracefulShutdown());
     process.on('SIGINT', () => this.gracefulShutdown());
     
-    // Error handlers
     process.on('uncaughtException', (error) => {
       console.error('❌ Uncaught Exception:', error);
       this.gracefulShutdown();
@@ -64,22 +30,20 @@ class MonitoringServer {
   public async start(): Promise<void> {
     try {
       console.log('🚀 Starting CFC Monitoring Server...');
-      console.log(`📋 Environment: ${this.nodeEnv}`);
-      console.log(`🔧 Port: ${this.port}`);
+      console.log(`📋 Environment: ${config.NODE_ENV}`);
+      console.log(`🔧 Port: ${config.PORT}`);
       
-      // 1. Conectar ao MongoDB usando a classe Database
+      // 1. Conectar ao MongoDB
       await this.database.connect();
-      console.log(`✅ Database connected: ${process.env.MONGO_DB_NAME}`);
+      console.log(`✅ Database connected: ${config.MONGO.DB_NAME}`);
       
       // 2. Iniciar servidor HTTP
       await this.startHttpServer();
-      console.log(`✅ HTTP Server: http://localhost:${this.port}`);
+      console.log(`✅ HTTP Server: http://localhost:${config.PORT}`);
       
-      // 3. Iniciar WebSocket (opcional)
-      if (process.env.ENABLE_WEBSOCKET !== 'false') {
-        this.startWebSocket();
-        console.log('✅ WebSocket ready: ws://localhost:3000/api/v1/logs/realtime/ws');
-      }
+      // 3. Iniciar WebSocket
+      this.startWebSocket();
+      console.log(`✅ WebSocket ready: ws://localhost:${config.PORT}/api/v1/logs/realtime/ws`);
       
       this.displayServerInfo();
       
@@ -89,19 +53,10 @@ class MonitoringServer {
     }
   }
 
-  private displayServerInfo(): void {
-    console.log('\n🎯 SERVER IS READY');
-    console.log('====================================');
-    console.log(`📊 Health:    http://localhost:${this.port}/health`);
-    console.log(`📝 API Docs:  http://localhost:${this.port}/api/v1`);
-    console.log(`🏠 Home:      http://localhost:${this.port}/`);
-    console.log('====================================\n');
-  }
-
   private async startHttpServer(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.server = this.app.getExpressApp().listen(this.port, () => {
+        this.server = this.app.getExpressApp().listen(config.PORT, () => {
           resolve();
         });
         
@@ -130,7 +85,6 @@ class MonitoringServer {
         timestamp: new Date().toISOString()
       }));
       
-      // Verificar status do banco via WebSocket
       ws.on('message', async (data) => {
         try {
           const message = data.toString();
@@ -150,7 +104,15 @@ class MonitoringServer {
     });
   }
 
-  // Mude de private para public para poder ser exportado
+  private displayServerInfo(): void {
+    console.log('\n🎯 SERVER IS READY');
+    console.log('====================================');
+    console.log(`📊 Health:    http://localhost:${config.PORT}/health`);
+    console.log(`📝 API Docs:  http://localhost:${config.PORT}/monitoring`);
+    console.log(`🏠 Home:      http://localhost:${config.PORT}/`);
+    console.log('====================================\n');
+  }
+
   public async gracefulShutdown(): Promise<void> {
     console.log('\n🛑 Graceful shutdown initiated...');
     
@@ -168,7 +130,7 @@ class MonitoringServer {
         });
       }
       
-      // 3. Fechar conexão com banco usando a classe Database
+      // 3. Fechar conexão com banco
       if (this.database.isConnectedToDB()) {
         await this.database.disconnect();
         console.log('✅ Database disconnected');
@@ -183,12 +145,11 @@ class MonitoringServer {
     }
   }
 
-  // Método para verificar status
   public getStatus(): any {
     return {
       running: !!this.server,
-      port: this.port,
-      environment: this.nodeEnv,
+      port: config.PORT,
+      environment: config.NODE_ENV,
       database: this.database.isConnectedToDB() ? 'connected' : 'disconnected',
       websocket: this.wss ? 'active' : 'inactive',
       uptime: process.uptime()
@@ -199,7 +160,7 @@ class MonitoringServer {
 // Criar instância
 const server = new MonitoringServer();
 
-// Exportar métodos - AGORA FUNCIONA porque gracefulShutdown é public
+// Exportar métodos
 export const start = () => server.start();
 export const shutdown = () => server.gracefulShutdown();
 export const status = () => server.getStatus();

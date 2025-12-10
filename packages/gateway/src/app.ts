@@ -74,7 +74,8 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
     console.log("🛰️  Preflight OPTIONS request recebida");
     console.log("Headers solicitados:", req.headers["access-control-request-headers"]);
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
   
   next();

@@ -1,3 +1,4 @@
+// src/modules/people/members/models/Member.ts - CORRIGIDO
 import { Schema, model } from "mongoose";
 import { IMemberRegistration } from "../interfaces/member-registration.interface";
 
@@ -32,6 +33,7 @@ const memberRegistrationSchema = new Schema<IMemberRegistration>(
       type: String,
       enum: ["single", "married", "divorced", "widowed"],
       required: true,
+      default: "single", // ← ADICIONADO valor padrão
     },
 
     // Endereço
@@ -46,7 +48,7 @@ const memberRegistrationSchema = new Schema<IMemberRegistration>(
         required: true,
         trim: true,
       },
-      province: {
+      province: {  // ← MODELO usa 'province'
         type: String,
         required: true,
         trim: true,
@@ -60,6 +62,7 @@ const memberRegistrationSchema = new Schema<IMemberRegistration>(
         type: String,
         enum: ["own", "rented", "family"],
         required: true,
+        default: "family",
       },
     },
 
@@ -70,11 +73,12 @@ const memberRegistrationSchema = new Schema<IMemberRegistration>(
       relationship: String,
     },
 
-    // Informações Espirituais
+    // Informações Espirituais - CORRIGIDO: 'howDidYouHear' já existe na interface
     baptismStatus: {
       type: String,
       enum: ["baptized", "not_baptized", "want_baptism"],
       required: true,
+      default: "not_baptized",
     },
     baptismDate: Date,
     previousChurch: String,
@@ -84,10 +88,25 @@ const memberRegistrationSchema = new Schema<IMemberRegistration>(
         trim: true,
       },
     ],
-    howDidYouHear: {
+    howDidYouHear: {  // ← Este campo JÁ ESTÁ na interface corrigida
       type: String,
       enum: ["friend", "social_media", "event", "other"],
       required: true,
+      default: "friend",
+    },
+
+    // Campos extras para compatibilidade
+    howFoundChurch: {  // ← ADICIONADO para frontend
+      type: String,
+      trim: true,
+    },
+    profession: {  // ← ADICIONADO para frontend
+      type: String,
+      trim: true,
+    },
+    familyMembers: {  // ← ADICIONADO para frontend
+      type: Number,
+      default: 0,
     },
 
     // Status do Pedido
@@ -97,7 +116,7 @@ const memberRegistrationSchema = new Schema<IMemberRegistration>(
       default: "pending",
     },
     approvedBy: {
-      type: Schema.Types.ObjectId,
+      type: Schema.Types.Mixed, // ← MUDADO para Mixed para aceitar string ou ObjectId
       ref: "User",
     },
     approvedAt: Date,
@@ -106,8 +125,9 @@ const memberRegistrationSchema = new Schema<IMemberRegistration>(
     // Metadata
     source: {
       type: String,
-      enum: ["chatbot", "website", "in_person"],
+      enum: ["chatbot", "website", "in_person", "manual", "referral"], // ← ADICIONADO opções
       required: true,
+      default: "website",
     },
     notes: String,
     internalNotes: String,

@@ -29,7 +29,7 @@ class App {
       cors({
         origin:
           process.env.NODE_ENV === "development"
-            ? "*" // Aceita tudo em dev
+            ? "*"
             : process.env.ALLOWED_ORIGINS?.split(",") || [
                 "http://localhost:9000",
               ],
@@ -39,36 +39,80 @@ class App {
           "Authorization",
           "X-Requested-With",
           "Accept",
-          "x-environment", // ✅ Header personalizado do seu frontend
-          "x-debug-mode", // ✅ Se usar modo debug
-          "x-request-id", // ✅ Para rastreamento
-          "Cache-Control", // ✅ Para controle de cache
-          "Pragma", // ✅ Para compatibilidade
+          "x-environment",
+          "x-debug-mode",
+          "x-request-id",
+          "Cache-Control",
+          "Pragma",
         ],
-        exposedHeaders: [
-          "Content-Length",
-          "X-Request-Id",
-          "X-Total-Count", // ✅ Para paginação
-        ],
-        credentials: true, // ✅ Permite cookies/sessões se necessário
-        maxAge: 86400, // ✅ Cache de preflight por 24h
-        preflightContinue: false, // ✅ O CORS cuida dos preflight
-        optionsSuccessStatus: 200, // ✅ Status para OPTIONS bem-sucedidas
+        exposedHeaders: ["Content-Length", "X-Request-Id", "X-Total-Count"],
+        credentials: true,
+        maxAge: 86400,
+        preflightContinue: false,
+        optionsSuccessStatus: 200,
       })
     );
 
-    // Logs
+    // Logs HTTP simplificado
     this.app.use(morgan("dev"));
 
-    // Body parser
-    this.app.use(express.json());
-    this.app.use(express.urlencoded({ extended: true }));
+    // Logging simplificado (sem interferir com o body)
+    this.app.use((req, res, next) => {
+      const start = Date.now();
+      console.log(`📥 ${req.method} ${req.url}`);
+
+      res.on("finish", () => {
+        const duration = Date.now() - start;
+        console.log(
+          `📤 ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`
+        );
+      });
+
+      next();
+    });
+
+    // ✅ BODY PARSER SIMPLIFICADO E FUNCIONAL
+    this.app.use(
+      express.json({
+        limit: "10mb",
+        strict: false,
+      })
+    );
+
+    this.app.use(
+      express.urlencoded({
+        extended: true,
+        limit: "10mb",
+      })
+    );
+
+    // Handler para JSON malformado
+    this.app.use(
+      (
+        error: any,
+        req: express.Request,
+        res: express.Response,
+        next: express.NextFunction
+      ) => {
+        if (error instanceof SyntaxError && "body" in error) {
+          console.error("❌ JSON malformado recebido:", error.message);
+          console.error("Body raw recebido:", req.body);
+          res.status(400).json({
+            success: false,
+            message: "JSON malformado",
+            error: error.message,
+          });
+          return;
+        }
+        next();
+      }
+    );
   }
 
   private setupRoutes(): void {
     console.log("📁 Configurando rotas...");
 
-    // ✅ HEALTH CHECK PRINCIPAL (para Gateway/monitoramento)
+    // ✅ HEALTH CHECK PRINCIPAL
     this.app.get("/health", (req, res) => {
       res.json({
         success: true,
@@ -81,7 +125,7 @@ class App {
       });
     });
 
-    // ✅ HEALTH CHECK COM PREFIXO (para compatibilidade)
+    // ✅ HEALTH CHECK COM PREFIXO
     this.app.get("/api/management/health", (req, res) => {
       res.json({
         success: true,
@@ -105,23 +149,36 @@ class App {
     this.app.use("/api/management/users", userRoutes);
     this.app.use("/api/management/analytics", analyticsRoutes);
 
+    // ✅ ROTA DE TESTE PARA DEBUG
+    this.app.put("/api/management/debug-test", (req, res) => {
+      console.log("🔍 Debug Test Route - Body recebido:", req.body);
+      res.json({
+        success: true,
+        message: "Debug route working",
+        receivedBody: req.body,
+        headers: req.headers,
+      });
+    });
+
     // 404 handler
     this.app.use("*", (req, res) => {
       res.status(404).json({
         success: false,
         message: "Rota não encontrada",
+        path: req.originalUrl,
+        method: req.method,
         availableRoutes: [
           "GET /health",
           "GET /api/management/health",
           "POST /api/management/auth/login",
           "GET /api/management/menus",
-          "GET /api/management/welcome-message",
-          "GET /api/management/analytics",
+          "PUT /api/management/menus/:id",
+          "GET /api/management/debug-test",
         ],
       });
     });
 
-    // Error handler simples
+    // Error handler global
     this.app.use(
       (
         error: any,
@@ -129,13 +186,21 @@ class App {
         res: express.Response,
         next: express.NextFunction
       ) => {
-        console.error("Erro:", error);
-        res.status(500).json({
+        console.error("🔥 Erro global:", {
+          message: error.message,
+          stack: error.stack,
+          url: req.url,
+          method: req.method,
+          body: req.body,
+        });
+
+        res.status(error.status || 500).json({
           success: false,
           message: "Erro interno do servidor",
           timestamp: new Date().toISOString(),
           ...(process.env.NODE_ENV === "development" && {
             error: error.message,
+            stack: error.stack,
           }),
         });
       }

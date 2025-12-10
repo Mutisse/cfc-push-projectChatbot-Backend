@@ -38,13 +38,17 @@ export class MemberController {
       res.status(500).json({
         success: false,
         data: [],
-        message: error instanceof Error ? error.message : "Erro interno do servidor",
+        message:
+          error instanceof Error ? error.message : "Erro interno do servidor",
       });
     }
   };
 
   // ✅ BUSCAR REGISTROS PENDENTES
-  getPendingRegistrations = async (req: Request, res: Response): Promise<void> => {
+  getPendingRegistrations = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
     try {
       const pendingRegistrations =
         await this.memberRegistrationService.getPendingRegistrations();
@@ -60,13 +64,17 @@ export class MemberController {
       res.status(500).json({
         success: false,
         data: [],
-        message: error instanceof Error ? error.message : "Erro interno do servidor",
+        message:
+          error instanceof Error ? error.message : "Erro interno do servidor",
       });
     }
   };
 
   // ✅ BUSCAR REGISTROS DELETADOS
-  getDeletedRegistrations = async (req: Request, res: Response): Promise<void> => {
+  getDeletedRegistrations = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
     try {
       const deletedRegistrations =
         await this.memberRegistrationService.getDeletedRegistrations();
@@ -82,7 +90,8 @@ export class MemberController {
       res.status(500).json({
         success: false,
         data: [],
-        message: error instanceof Error ? error.message : "Erro interno do servidor",
+        message:
+          error instanceof Error ? error.message : "Erro interno do servidor",
       });
     }
   };
@@ -113,13 +122,17 @@ export class MemberController {
       res.status(500).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Erro interno do servidor",
+        message:
+          error instanceof Error ? error.message : "Erro interno do servidor",
       });
     }
   };
 
   // ✅ BUSCAR REGISTRO POR TELEFONE
-  getRegistrationByPhone = async (req: Request, res: Response): Promise<void> => {
+  getRegistrationByPhone = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
     try {
       const { phoneNumber } = req.params;
 
@@ -132,6 +145,7 @@ export class MemberController {
         return;
       }
 
+      // Limpa o número (remove tudo que não for dígito)
       const cleanPhoneNumber = phoneNumber.replace(/\D/g, "");
 
       if (cleanPhoneNumber.length < 9) {
@@ -143,6 +157,7 @@ export class MemberController {
         return;
       }
 
+      // Busca no service
       const registration =
         await this.memberRegistrationService.getRegistrationByPhone(
           cleanPhoneNumber
@@ -157,13 +172,14 @@ export class MemberController {
         return;
       }
 
+      // Retorna o objeto Member (NÃO array)
       res.status(200).json({
         success: true,
-        data: registration,
+        data: registration, // ← OBJETO INDIVIDUAL
         message: "Membro encontrado com sucesso",
       });
     } catch (error) {
-      console.error("❌ Erro ao buscar membro por telefone:", error);
+      console.error("Erro ao buscar membro por telefone:", error);
       res.status(500).json({
         success: false,
         message: "Erro interno do servidor ao buscar membro",
@@ -187,13 +203,17 @@ export class MemberController {
       res.status(500).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Erro interno do servidor",
+        message:
+          error instanceof Error ? error.message : "Erro interno do servidor",
       });
     }
   };
 
   // ✅ BUSCAR STATUS DO REGISTRO
-  getRegistrationStatus = async (req: Request, res: Response): Promise<void> => {
+  getRegistrationStatus = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
     try {
       const { id } = req.params;
       const status = await this.memberRegistrationService.getRegistrationStatus(
@@ -210,7 +230,8 @@ export class MemberController {
       res.status(404).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Registro não encontrado",
+        message:
+          error instanceof Error ? error.message : "Registro não encontrado",
       });
     }
   };
@@ -236,7 +257,8 @@ export class MemberController {
       res.status(400).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Erro ao criar registro",
+        message:
+          error instanceof Error ? error.message : "Erro ao criar registro",
       });
     }
   };
@@ -270,7 +292,8 @@ export class MemberController {
       res.status(400).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Erro ao atualizar registro",
+        message:
+          error instanceof Error ? error.message : "Erro ao atualizar registro",
       });
     }
   };
@@ -307,7 +330,8 @@ export class MemberController {
       res.status(400).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Erro ao aprovar registro",
+        message:
+          error instanceof Error ? error.message : "Erro ao aprovar registro",
       });
     }
   };
@@ -352,7 +376,8 @@ export class MemberController {
       res.status(400).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Erro ao rejeitar registro",
+        message:
+          error instanceof Error ? error.message : "Erro ao rejeitar registro",
       });
     }
   };
@@ -383,7 +408,8 @@ export class MemberController {
       res.status(400).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Erro ao cancelar registro",
+        message:
+          error instanceof Error ? error.message : "Erro ao cancelar registro",
       });
     }
   };
@@ -414,7 +440,8 @@ export class MemberController {
       res.status(400).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Erro ao restaurar registro",
+        message:
+          error instanceof Error ? error.message : "Erro ao restaurar registro",
       });
     }
   };
@@ -422,7 +449,10 @@ export class MemberController {
   // ==================== ROTAS DE EXCLUSÃO ====================
 
   // ✅ SOFT DELETE
-  softDeleteRegistration = async (req: Request, res: Response): Promise<void> => {
+  softDeleteRegistration = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
     try {
       const { id } = req.params;
       const deletedRegistration =
@@ -447,13 +477,17 @@ export class MemberController {
       res.status(400).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Erro ao arquivar registro",
+        message:
+          error instanceof Error ? error.message : "Erro ao arquivar registro",
       });
     }
   };
 
   // ✅ HARD DELETE
-  hardDeleteRegistration = async (req: Request, res: Response): Promise<void> => {
+  hardDeleteRegistration = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
     try {
       const { id } = req.params;
       const deleted =
@@ -478,7 +512,8 @@ export class MemberController {
       res.status(400).json({
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : "Erro ao excluir registro",
+        message:
+          error instanceof Error ? error.message : "Erro ao excluir registro",
       });
     }
   };

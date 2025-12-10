@@ -1,57 +1,58 @@
 export enum NotificationType {
-  // Member Registrations
-  MEMBER_APPROVAL = 'member_approval',
-  MEMBER_REJECTION = 'member_rejection', 
-  MEMBER_PENDING = 'member_pending',
-  MEMBER_CANCELLED = 'member_cancelled',
-  
-  // Prayer Requests
-  PRAYER_REQUEST_NEW = 'prayer_request_new',
-  PRAYER_REQUEST_URGENT = 'prayer_request_urgent',
-  PRAYER_ANSWERED = 'prayer_answered',
-  
-  // Pastoral Visits
-  VISIT_SCHEDULED = 'visit_scheduled',
-  VISIT_REMINDER = 'visit_reminder',
-  VISIT_CANCELLED = 'visit_cancelled',
-  VISIT_COMPLETED = 'visit_completed',
-  
-  // Events and Schedule
-  EVENT_REMINDER = 'event_reminder',
-  EVENT_CANCELLED = 'event_cancelled',
-  EVENT_NEW = 'event_new',
-  SPECIAL_EVENT = 'special_event',
-  
-  // System and Admin
-  SYSTEM_ALERT = 'system_alert',
-  BACKUP_COMPLETE = 'backup_complete',
-  USAGE_REPORT = 'usage_report',
-  SECURITY_ALERT = 'security_alert'
-}
+  MEMBER_APPROVAL = "member_approval",
+  MEMBER_REJECTION = "member_rejection",
+  MEMBER_PENDING = "member_pending",
+  MEMBER_CANCELLED = "member_cancelled",
 
+  PRAYER_REQUEST_NEW = "prayer_request_new",
+  PRAYER_REQUEST_URGENT = "prayer_request_urgent",
+  PRAYER_ANSWERED = "prayer_answered",
+
+  VISIT_SCHEDULED = "visit_scheduled",
+  VISIT_REMINDER = "visit_reminder",
+  VISIT_CANCELLED = "visit_cancelled",
+  VISIT_COMPLETED = "visit_completed",
+
+  EVENT_CREATED = "event_created",
+  EVENT_REMINDER = "event_reminder",
+  EVENT_CANCELLED = "event_cancelled",
+
+  BIRTHDAY_REMINDER = "birthday_reminder",
+  ANNIVERSARY_REMINDER = "anniversary_reminder",
+
+  DONATION_RECEIVED = "donation_received",
+  DONATION_THANK_YOU = "donation_thank_you",
+
+  SYSTEM_ALERT = "system_alert",
+  SYSTEM_MAINTENANCE = "system_maintenance",
+
+  GENERAL = "general",
+  WELCOME = "welcome",
+  PASSWORD_RESET = "password_reset",
+}
 export enum NotificationChannel {
-  IN_APP = 'in_app',
-  EMAIL = 'email',
-  SMS = 'sms',
-  WHATSAPP = 'whatsapp',
-  PUSH = 'push'
+  IN_APP = "in_app",
+  EMAIL = "email",
+  SMS = "sms",
+  WHATSAPP = "whatsapp",
+  PUSH = "push",
 }
 
 export enum NotificationStatus {
-  PENDING = 'pending',
-  SENT = 'sent',
-  FAILED = 'failed',
-  READ = 'read',
-  DELETED = 'deleted'
+  PENDING = "pending",
+  SENT = "sent",
+  FAILED = "failed",
+  READ = "read",
+  DELETED = "deleted",
 }
 
 export enum RecipientGroup {
-  ALL_MEMBERS = 'all_members',
-  ALL_ADMINS = 'all_admins',
-  PASTORS = 'pastors',
-  PRAYER_TEAM = 'prayer_team',
-  EVENT_COORDINATORS = 'event_coordinators',
-  TECHNICAL_TEAM = 'technical_team'
+  ALL_MEMBERS = "all_members",
+  ALL_ADMINS = "all_admins",
+  PASTORS = "pastors",
+  PRAYER_TEAM = "prayer_team",
+  EVENT_COORDINATORS = "event_coordinators",
+  TECHNICAL_TEAM = "technical_team",
 }
 
 export interface INotification {
@@ -109,7 +110,7 @@ export interface IPaginationOptions {
   page: number;
   limit: number;
   sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
+  sortOrder?: "asc" | "desc";
 }
 
 export interface INotificationResponse {

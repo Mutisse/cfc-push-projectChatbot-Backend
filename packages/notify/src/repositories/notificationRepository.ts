@@ -46,8 +46,20 @@ export class NotificationRepository {
     try {
       const skip = (page - 1) * limit;
       
+      // Use o método find do Mongoose diretamente, não findByUserId
       const [notifications, total] = await Promise.all([
-        Notification.findByUserId(recipientId, { page, limit }),
+        Notification.find({
+          $or: [
+            { recipient: recipientId },
+            { recipient: { $in: [recipientId] } },
+            { recipient: 'all_members' },
+            { recipient: 'all_admins' }
+          ]
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+        
         Notification.countDocuments({
           $or: [
             { recipient: recipientId },
@@ -59,7 +71,7 @@ export class NotificationRepository {
       ]);
 
       return { 
-        notifications: notifications.map(n => n.toObject() as INotification), 
+        notifications: notifications.map((n: INotificationDocument) => n.toObject() as INotification), 
         total 
       };
     } catch (error: unknown) {
@@ -89,11 +101,6 @@ export class NotificationRepository {
         if (filters.endDate) query.createdAt.$lte = filters.endDate;
       }
 
-      // Filtro de busca textual
-      if (filters.search) {
-        query.$text = { $search: filters.search };
-      }
-
       const sort: any = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
 
       const [notifications, total] = await Promise.all([
@@ -105,7 +112,7 @@ export class NotificationRepository {
       ]);
 
       return { 
-        notifications: notifications.map(n => n.toObject() as INotification), 
+        notifications: notifications.map((n: INotificationDocument) => n.toObject() as INotification), 
         total 
       };
     } catch (error: unknown) {
@@ -119,7 +126,7 @@ export class NotificationRepository {
         status: NotificationStatus.PENDING 
       }).sort({ createdAt: 1 });
       
-      return notifications.map(n => n.toObject() as INotification);
+      return notifications.map((n: INotificationDocument) => n.toObject() as INotification);
     } catch (error: unknown) {
       return handleRepositoryError('buscar notificações pendentes', error);
     }
@@ -178,7 +185,11 @@ export class NotificationRepository {
         return null;
       }
 
-      await notification.markAsRead();
+      // Atualiza manualmente
+      notification.status = NotificationStatus.READ;
+      notification.readAt = new Date();
+      await notification.save();
+      
       return notification.toObject() as INotification;
     } catch (error: unknown) {
       return handleRepositoryError('marcar notificação como lida', error);
@@ -241,48 +252,50 @@ export class NotificationRepository {
     }
   }
 
-  // STATS
+  // STATS - Implementação manual
   async getStats(recipientId?: string): Promise<any> {
     try {
-      const stats = await Notification.getStats(recipientId);
-      
-      if (stats.length === 0 || !stats[0]) {
-        return {
-          total: 0,
-          unread: 0,
-          pending: 0,
-          sent: 0,
-          failed: 0,
-          byType: {},
-          byChannel: {}
-        };
+      const match: any = {};
+      if (recipientId) {
+        match.$or = [
+          { recipient: recipientId },
+          { recipient: { $in: [recipientId] } },
+          { recipient: 'all_members' },
+          { recipient: 'all_admins' }
+        ];
       }
 
-      const data = stats[0];
-      const totals = data.totals?.[0] || { total: 0, unread: 0, pending: 0, sent: 0, failed: 0 };
-      
-      const byType: Record<string, number> = {};
-      if (data.byType) {
-        data.byType.forEach((item: any) => {
-          byType[item._id] = item.count;
-        });
-      }
-
-      const byChannel: Record<string, number> = {};
-      if (data.byChannel) {
-        data.byChannel.forEach((item: any) => {
-          byChannel[item._id] = item.count;
-        });
-      }
+      const [total, unread, pending, sent, failed, byType, byChannel] = await Promise.all([
+        Notification.countDocuments(match),
+        Notification.countDocuments({ ...match, status: NotificationStatus.READ }),
+        Notification.countDocuments({ ...match, status: NotificationStatus.PENDING }),
+        Notification.countDocuments({ ...match, status: NotificationStatus.SENT }),
+        Notification.countDocuments({ ...match, status: NotificationStatus.FAILED }),
+        Notification.aggregate([
+          { $match: match },
+          { $group: { _id: '$type', count: { $sum: 1 } } }
+        ]),
+        Notification.aggregate([
+          { $match: match },
+          { $unwind: '$channels' },
+          { $group: { _id: '$channels', count: { $sum: 1 } } }
+        ])
+      ]);
 
       return {
-        total: totals.total || 0,
-        unread: totals.unread || 0,
-        pending: totals.pending || 0,
-        sent: totals.sent || 0,
-        failed: totals.failed || 0,
-        byType,
-        byChannel
+        total,
+        unread,
+        pending,
+        sent,
+        failed,
+        byType: byType.reduce((acc: any, item: any) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {}),
+        byChannel: byChannel.reduce((acc: any, item: any) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {})
       };
     } catch (error: unknown) {
       return handleRepositoryError('buscar estatísticas', error);
@@ -291,7 +304,15 @@ export class NotificationRepository {
 
   async getUnreadCount(recipientId: string): Promise<number> {
     try {
-      return await Notification.countUnreadByUserId(recipientId);
+      return await Notification.countDocuments({
+        $or: [
+          { recipient: recipientId },
+          { recipient: { $in: [recipientId] } },
+          { recipient: 'all_members' },
+          { recipient: 'all_admins' }
+        ],
+        status: NotificationStatus.READ
+      });
     } catch (error: unknown) {
       return handleRepositoryError('contar notificações não lidas', error);
     }
@@ -304,7 +325,7 @@ export class NotificationRepository {
         'data.memberRequestId': memberRequestId
       }).sort({ createdAt: -1 });
 
-      return notifications.map(n => n.toObject() as INotification);
+      return notifications.map((n: INotificationDocument) => n.toObject() as INotification);
     } catch (error: unknown) {
       return handleRepositoryError('buscar notificações do pedido de membro', error);
     }

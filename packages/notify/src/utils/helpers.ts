@@ -1,63 +1,74 @@
-import { NotificationType, NotificationChannel } from '../interfaces/notification.interface';
+import { NotificationType } from '../interfaces/notification.interface';
 
-// Gerar template de mensagem baseado no tipo
-export const generateNotificationTemplate = (
-  type: NotificationType, 
-  data: any
-): { title: string; message: string } => {
-  const templates = {
-    [NotificationType.MEMBER_APPROVAL]: {
-      title: '🎉 Cadastro Aprovado!',
-      message: `Olá ${data.fullName}! Seu cadastro como membro da CFC Push foi aprovado. Bem-vindo à família!`
+export const getNotificationTemplate = (type: NotificationType) => {
+  const templates: Partial<Record<NotificationType, { title: string; message: string }>> = {
+    [NotificationType.MEMBER_APPROVAL]: { 
+      title: 'Cadastro Aprovado!', 
+      message: 'Seu cadastro como membro foi aprovado.' 
     },
-    [NotificationType.MEMBER_REJECTION]: {
-      title: 'Cadastro Não Aprovado',
-      message: `Olá ${data.fullName}. Seu cadastro não pôde ser aprovado. ${data.reason || 'Entre em contato para mais informações.'}`
+    [NotificationType.MEMBER_REJECTION]: { 
+      title: 'Cadastro Não Aprovado', 
+      message: 'Seu cadastro não pôde ser aprovado no momento.' 
     },
-    [NotificationType.MEMBER_PENDING]: {
-      title: '📝 Novo Pedido de Cadastro',
-      message: `Novo pedido de ${data.fullName} (${data.phone}) aguardando aprovação`
+    [NotificationType.MEMBER_PENDING]: { 
+      title: 'Novo Pedido de Cadastro', 
+      message: 'Há um novo pedido de cadastro aguardando aprovação.' 
     },
-    [NotificationType.PRAYER_REQUEST_NEW]: {
-      title: '🙏 Novo Pedido de Oração',
-      message: `${data.userName} precisa de oração: ${data.subject}`
+    [NotificationType.MEMBER_CANCELLED]: { 
+      title: 'Cadastro Cancelado', 
+      message: 'Seu cadastro foi cancelado.' 
     },
-    [NotificationType.PRAYER_REQUEST_URGENT]: {
-      title: '🚨 PEDIDO URGENTE de Oração!',
-      message: `URGENTE: ${data.userName} precisa de oração: ${data.subject}`
+    [NotificationType.PRAYER_REQUEST_NEW]: { 
+      title: 'Novo Pedido de Oração', 
+      message: 'Há um novo pedido de oração.' 
     },
-    [NotificationType.VISIT_SCHEDULED]: {
-      title: '🏠 Visita Pastoral Agendada',
-      message: `Visita agendada para família ${data.familyName} em ${formatDate(data.scheduledDate)}`
+    [NotificationType.PRAYER_REQUEST_URGENT]: { 
+      title: 'Pedido URGENTE de Oração', 
+      message: 'Há um pedido de oração urgente!' 
+    },
+    [NotificationType.PRAYER_ANSWERED]: { 
+      title: 'Oração Respondida!', 
+      message: 'Uma oração foi respondida. Louve ao Senhor!' 
+    },
+    [NotificationType.VISIT_SCHEDULED]: { 
+      title: 'Visita Agendada', 
+      message: 'Uma visita pastoral foi agendada.' 
+    },
+    [NotificationType.VISIT_REMINDER]: { 
+      title: 'Lembrete de Visita', 
+      message: 'Você tem uma visita pastoral agendada para amanhã.' 
+    },
+    [NotificationType.VISIT_CANCELLED]: { 
+      title: 'Visita Cancelada', 
+      message: 'Uma visita pastoral foi cancelada.' 
+    },
+    [NotificationType.VISIT_COMPLETED]: { 
+      title: 'Visita Concluída', 
+      message: 'Uma visita pastoral foi concluída com sucesso.' 
+    },
+    [NotificationType.WELCOME]: { 
+      title: 'Bem-vindo à CFC Push!', 
+      message: 'Seja muito bem-vindo à nossa comunidade.' 
     }
   };
 
   return templates[type] || { title: 'Nova Notificação', message: 'Você tem uma nova notificação' };
 };
 
-// Validar canais de notificação
-export const validateChannels = (channels: NotificationChannel[]): boolean => {
-  const validChannels = Object.values(NotificationChannel);
-  return channels.every(channel => validChannels.includes(channel));
+export const formatPhoneNumber = (phone: string): string => {
+  const cleaned = phone.replace(/\D/g, '');
+  
+  if (cleaned.length === 11 && cleaned.startsWith('0')) {
+    return `55${cleaned.substring(1)}`;
+  }
+  
+  if (cleaned.length === 10) {
+    return `55${cleaned}`;
+  }
+  
+  return cleaned;
 };
 
-// Formatar data para exibição
-export const formatDate = (date: Date | string): string => {
-  return new Date(date).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
-
-// Gerar ID único para tracking
-export const generateTrackingId = (): string => {
-  return `NTF_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-};
-
-// Delay helper para simulação
 export const delay = (ms: number): Promise<void> => {
   return new Promise(resolve => setTimeout(resolve, ms));
 };

@@ -1,4 +1,3 @@
-// src/routes/serverRoutes.ts
 import { Router } from 'express';
 import serverManager from '../services/serverManager';
 
@@ -29,26 +28,28 @@ router.get('/servers/:key/health', async (req, res) => {
 // Adicionar novo servidor (apenas desenvolvimento)
 router.post('/servers', (req, res) => {
   if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({
+    res.status(403).json({
       error: 'Forbidden',
       message: 'Cannot add servers in production mode'
     });
+    return;
   }
 
   try {
-    const { key, config } = req.body;
-    if (!key || !config) {
-      return res.status(400).json({
+    const { key, config: serverConfig } = req.body;
+    if (!key || !serverConfig) {
+      res.status(400).json({
         error: 'Bad Request',
         message: 'Key and config are required'
       });
+      return;
     }
 
-    serverManager.addServer(key, config);
+    serverManager.addServer(key, serverConfig);
     res.status(201).json({
       message: 'Server added successfully',
       key,
-      config
+      config: serverConfig
     });
   } catch (error) {
     res.status(500).json({

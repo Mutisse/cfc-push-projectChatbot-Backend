@@ -1,3 +1,4 @@
+// src/modules/people/members/interfaces/member-registration.interface.ts
 import { Document, Types } from "mongoose";
 
 export interface IMemberRegistration extends Document {
@@ -6,16 +7,18 @@ export interface IMemberRegistration extends Document {
   // Dados Pessoais
   fullName: string;
   phoneNumber: string;
+  phone?: string; // ← ADICIONE ESTE CAMPO SE NÃO EXISTIR
+
   email?: string;
   dateOfBirth: Date;
   gender: "male" | "female";
   maritalStatus: "single" | "married" | "divorced" | "widowed";
 
-  // Endereço
+  // Endereço - CORRIGIDO para bater com o modelo
   address: {
     street: string;
     city: string;
-    province: string;
+    province: string; // ← MODELO usa 'province', não 'region'
     neighborhood: string;
     residenceType: "own" | "rented" | "family";
   };
@@ -31,12 +34,12 @@ export interface IMemberRegistration extends Document {
   baptismStatus: "baptized" | "not_baptized" | "want_baptism";
   baptismDate?: Date;
   previousChurch?: string;
-  spiritualInterest: string[];
-  howDidYouHear: "friend" | "social_media" | "event" | "other";
+  spiritualInterest?: string[];
+  howDidYouHear: "friend" | "social_media" | "event" | "other"; // ← ADICIONADO para bater com modelo
 
   // Status do Pedido
   status: "pending" | "approved" | "rejected" | "cancelled";
-  approvedBy?: Types.ObjectId;
+  approvedBy?: Types.ObjectId | string;
   approvedAt?: Date;
   rejectionReason?: string;
 
@@ -44,6 +47,11 @@ export interface IMemberRegistration extends Document {
   source: "chatbot" | "website" | "in_person";
   notes?: string;
   internalNotes?: string;
+
+  // Campos extras para compatibilidade
+  howFoundChurch?: string; // ← Mantido para frontend
+  profession?: string;
+  familyMembers?: number;
 
   // Soft Delete
   deletedAt: Date | null;
@@ -53,41 +61,90 @@ export interface IMemberRegistration extends Document {
   updatedAt: Date;
 }
 
+// DTO para criação - compatível com frontend
 export interface CreateMemberRegistrationDto {
+  // Campos obrigatórios
   fullName: string;
   phoneNumber: string;
-  email?: string;
-  dateOfBirth: Date;
+  dateOfBirth: Date | string;
   gender: "male" | "female";
-  maritalStatus: "single" | "married" | "divorced" | "widowed";
+  maritalStatus?: "single" | "married" | "divorced" | "widowed";
+
+  // Endereço (modelo usa 'province', frontend pode enviar 'region')
   address: {
     street: string;
     city: string;
-    province: string;
+    province: string; // ← Nome do campo no MODELO
     neighborhood: string;
-    residenceType: "own" | "rented" | "family";
+    residenceType?: "own" | "rented" | "family";
   };
+
+  // Campos espirituais
+  baptismStatus?: "baptized" | "not_baptized" | "want_baptism";
+  howDidYouHear?: "friend" | "social_media" | "event" | "other";
+  howFoundChurch?: string; // ← Para frontend
+
+  // Outros campos
+  email?: string;
+  profession?: string;
+  familyMembers?: number;
+  previousChurch?: string;
+  notes?: string;
+  source?: "chatbot" | "website" | "in_person";
+  status?: "pending" | "approved" | "rejected" | "cancelled";
   emergencyContact?: {
     name: string;
     phoneNumber: string;
     relationship: string;
   };
-  baptismStatus: "baptized" | "not_baptized" | "want_baptism";
-  baptismDate?: Date;
-  previousChurch?: string;
-  spiritualInterest: string[];
-  howDidYouHear: "friend" | "social_media" | "event" | "other";
-  source: "chatbot" | "website" | "in_person";
-  notes?: string;
+
+  // Para flexibilidade
+  [key: string]: any;
 }
 
-export interface UpdateMemberRegistrationDto
-  extends Partial<CreateMemberRegistrationDto> {
+// DTO para atualização - todos os campos são opcionais
+export interface UpdateMemberRegistrationDto {
+  fullName?: string;
+  phoneNumber?: string;
+  dateOfBirth?: Date | string;
+  gender?: "male" | "female";
+  maritalStatus?: "single" | "married" | "divorced" | "widowed";
+
+  address?: {
+    street?: string;
+    city?: string;
+    province?: string;
+    neighborhood?: string;
+    residenceType?: "own" | "rented" | "family";
+  };
+
+  email?: string;
+  profession?: string;
+  familyMembers?: number;
+  baptismStatus?: "baptized" | "not_baptized" | "want_baptism";
+  baptismDate?: Date | string;
+  previousChurch?: string;
+  spiritualInterest?: string[];
+  howDidYouHear?: "friend" | "social_media" | "event" | "other";
+  howFoundChurch?: string;
+
+  emergencyContact?: {
+    name?: string;
+    phoneNumber?: string;
+    relationship?: string;
+  };
+
   status?: "pending" | "approved" | "rejected" | "cancelled";
   rejectionReason?: string;
+  source?: "chatbot" | "website" | "in_person";
+  notes?: string;
   internalNotes?: string;
+
+  // Para flexibilidade
+  [key: string]: any;
 }
 
+// Interface para resposta da API
 export interface MemberRegistrationResponse {
   _id: string;
   fullName: string;
@@ -111,7 +168,7 @@ export interface MemberRegistrationResponse {
   baptismStatus: string;
   baptismDate?: string;
   previousChurch?: string;
-  spiritualInterest: string[];
+  spiritualInterest?: string[];
   howDidYouHear: string;
   status: string;
   approvedBy?: string;

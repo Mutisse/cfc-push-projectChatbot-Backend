@@ -1,9 +1,14 @@
 {
   "name": "cfc-gateway",
   "version": "1.0.0",
+  "main": "dist/server.js",
   "scripts": {
-    "dev": "ts-node-dev src/server.ts",
-    "start": "node dist/server.js"
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "clean": "rmdir /s /q dist 2>nul || exit 0",
+    "build:clean": "npm run clean && npm run build"
   },
   "dependencies": {
     "@types/express-rate-limit": "^5.1.3",

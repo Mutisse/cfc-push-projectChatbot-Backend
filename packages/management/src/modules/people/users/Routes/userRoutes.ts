@@ -10,8 +10,11 @@ const authMiddleware = new AuthMiddleware();
 // ==================== MIDDLEWARE DE AUTENTICAÇÃO ====================
 router.use(authMiddleware.authenticate);
 
+// ==================== ROTA PARA LISTAR USUÁRIOS (DEVE VIR PRIMEIRO) ====================
+router.get('/', authMiddleware.authorize(['super_admin', 'grupo_pastoral', 'leader']), userController.getUsers);
+
 // ==================== ROTA DE DOCUMENTAÇÃO ====================
-router.get("/", (req, res) => {
+router.get("/docs", (req, res) => {  // ✅ MUDADO PARA "/docs"
   res.json({
     service: "CFC Push Management API - Users Module",
     version: "1.0.0",
@@ -196,9 +199,8 @@ router.get("/", (req, res) => {
 
 // ==================== ROTAS COM AUTORIZAÇÃO POR ROLE ====================
 
-// CRUD BÁSICO
+// CRUD BÁSICO (já temos GET / na linha 13)
 router.post('/', authMiddleware.authorize(['super_admin']), userController.createUser);
-router.get('/', authMiddleware.authorize(['super_admin', 'grupo_pastoral', 'leader']), userController.getUsers);
 router.get('/stats', authMiddleware.authorize(['super_admin', 'grupo_pastoral']), userController.getUserStats);
 router.get('/deleted', authMiddleware.authorize(['super_admin']), userController.getDeletedUsers);
 
