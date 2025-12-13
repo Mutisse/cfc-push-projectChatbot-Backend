@@ -73,13 +73,6 @@ router.put('/:id/config', ServiceController.updateServiceConfiguration);
 // DELETE /monitoring/services/:id - Excluir serviço
 router.delete('/:id', ServiceController.deleteService);
 
-// DELETE /monitoring/services/cleanup - Limpar serviços antigos
-// Comente ou remova esta rota se não for usar
-// router.delete('/cleanup', async (_req, res) => {
-//   res.status(200).json({
-//     success: true,
-//     message: 'Cleanup completed'
-//   });
-// });
+
 
 export default router;

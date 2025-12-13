@@ -1,3 +1,4 @@
+// src/middlewares/authMiddleware.ts
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import config from '../config';
@@ -73,7 +74,8 @@ export const validateApiKey = (req: Request, res: Response, next: NextFunction) 
     });
   }
 
-  const validKeys = config.API_KEYS?.split(',') || [];
+  const apiKeys = config.API_KEY || '';
+  const validKeys = apiKeys ? apiKeys.split(',') : [];
   
   if (!validKeys.includes(apiKey as string)) {
     return res.status(403).json({

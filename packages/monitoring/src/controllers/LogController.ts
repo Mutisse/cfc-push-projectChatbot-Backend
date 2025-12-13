@@ -1,3 +1,4 @@
+// src/controllers/LogController.ts
 import { Request, Response } from 'express';
 import LogService from '../services/LogService';
 
@@ -31,7 +32,7 @@ export class LogController {
       );
 
       return res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -51,7 +52,7 @@ export class LogController {
       );
       
       return res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -67,7 +68,7 @@ export class LogController {
       const result = await LogService.getRecentLogs(parseInt(limit as string));
       
       return res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -83,7 +84,7 @@ export class LogController {
       const result = await LogService.getErrorLogs(parseInt(limit as string));
       
       return res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -116,7 +117,7 @@ export class LogController {
       );
       
       return res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -149,7 +150,7 @@ export class LogController {
       );
       
       return res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -165,7 +166,7 @@ export class LogController {
       const result = await LogService.getErrorTrend(parseInt(days as string));
       
       return res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -181,7 +182,7 @@ export class LogController {
       const result = await LogService.getLogById(id);
       
       return res.status(result.success ? 200 : 404).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -197,7 +198,7 @@ export class LogController {
       const result = await LogService.getLogsByService(serviceId);
       
       return res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -213,7 +214,7 @@ export class LogController {
       const result = await LogService.createLog(logData);
       
       return res.status(result.success ? 201 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -238,7 +239,7 @@ export class LogController {
       const result = await LogService.createBatchLogs(logsData);
       
       return res.status(result.success ? 201 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -254,7 +255,7 @@ export class LogController {
       const result = await LogService.rotateLogs(parseInt(daysToKeep as string));
       
       return res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',
@@ -268,7 +269,7 @@ export class LogController {
     try {
       const result = await LogService.getRealtimeLogs();
       return res.status(result.success ? 200 : 400).json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       return res.status(500).json({
         success: false,
         message: 'Internal server error',

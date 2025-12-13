@@ -14,7 +14,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "noUnusedLocals": false,
-    "noUnusedParameters": false,  // ← MUDAR PARA false
+    "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": false,
     "moduleResolution": "node",

@@ -1,4 +1,4 @@
-import { Metric, IMetric } from '../models/Metric';
+import { Metric, IMetric } from '../models/MetricModel';
 
 export interface MetricFilters {
   service?: string;

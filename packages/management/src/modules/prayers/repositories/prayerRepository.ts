@@ -1,221 +1,143 @@
-// src/modules/prayers/repositories/prayerRepository.ts
-import { Prayer } from '../models/Prayer';
-import { 
-  IPrayer, 
-  CreatePrayerDto, 
-  UpdatePrayerDto, 
-  FilterPrayerDto,
-  PrayerStats,
-  PrayerSummary 
-} from '../interfaces/prayer.interface';
-import { Types } from 'mongoose';
+import { Prayer } from "../models/Prayer";
+import { IPrayer } from "../interfaces/prayer.interface";
+import { Types } from "mongoose";
 
 export class PrayerRepository {
   // ==================== CRUD BÁSICO ====================
 
-  async create(data: CreatePrayerDto): Promise<IPrayer> {
-    const prayer = new Prayer({
-      ...data,
-      createdBy: 'public'
-    });
-    return await prayer.save();
+  async findAll(): Promise<IPrayer[]> {
+    return await Prayer.find({ deletedAt: null })
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
   async findById(id: string): Promise<IPrayer | null> {
     if (!Types.ObjectId.isValid(id)) return null;
-    return await Prayer.findOne({ _id: id }).exec(); // Removido filtro deletedAt para admin poder ver deletados
-  }
-
-  async findActiveById(id: string): Promise<IPrayer | null> {
-    if (!Types.ObjectId.isValid(id)) return null;
     return await Prayer.findOne({ _id: id, deletedAt: null }).exec();
   }
 
-  async findAll(
-    filters: FilterPrayerDto = {},
-    page: number = 1,
-    limit: number = 20,
-    sortBy: string = '-createdAt'
-  ): Promise<{ data: IPrayer[]; total: number; page: number; totalPages: number }> {
-    
-    const query: any = {};
-    
-    // Filtros de status
-    if (filters.status) query.status = filters.status;
-    if (filters.urgency) query.urgency = filters.urgency;
-    if (filters.prayerType) query.prayerType = filters.prayerType;
-    
-    // Filtro de data
-    if (filters.dateFrom || filters.dateTo) {
-      query.createdAt = {};
-      if (filters.dateFrom) query.createdAt.$gte = filters.dateFrom;
-      if (filters.dateTo) query.createdAt.$lte = filters.dateTo;
-    }
-    
-    // Busca textual
-    if (filters.search) {
-      query.$or = [
-        { name: { $regex: filters.search, $options: 'i' } },
-        { phone: { $regex: filters.search, $options: 'i' } },
-        { description: { $regex: filters.search, $options: 'i' } },
-        { notes: { $regex: filters.search, $options: 'i' } }
-      ];
-    }
-    
-    // Incluir deletados?
-    if (!filters.includeDeleted) {
-      query.deletedAt = null;
-    }
-    
-    const skip = (page - 1) * limit;
-    
-    const [data, total] = await Promise.all([
-      Prayer.find(query)
-        .sort(sortBy)
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      Prayer.countDocuments(query)
-    ]);
-    
-    return {
-      data,
-      total,
-      page,
-      totalPages: Math.ceil(total / limit)
-    };
+  async create(prayerData: any): Promise<IPrayer> {
+    const prayer = new Prayer(prayerData);
+    return await prayer.save();
   }
 
-  async update(id: string, data: UpdatePrayerDto): Promise<IPrayer | null> {
+  async update(id: string, prayerData: any): Promise<IPrayer | null> {
     if (!Types.ObjectId.isValid(id)) return null;
-    
-    return await Prayer.findOneAndUpdate(
-      { _id: id },
-      { 
-        ...data,
-        updatedAt: new Date()
-      },
-      { new: true, runValidators: true }
-    ).exec();
-  }
 
-  async updateActive(id: string, data: UpdatePrayerDto): Promise<IPrayer | null> {
-    if (!Types.ObjectId.isValid(id)) return null;
-    
     return await Prayer.findOneAndUpdate(
       { _id: id, deletedAt: null },
-      { 
-        ...data,
-        updatedAt: new Date()
-      },
-      { new: true, runValidators: true }
+      { ...prayerData, updatedAt: new Date() },
+      { new: true }
     ).exec();
   }
 
   // ==================== SOFT DELETE ====================
 
   async softDelete(id: string, deletedBy?: string): Promise<IPrayer | null> {
-    if (!Types.ObjectId.isValid(id)) return null;
-    
-    const updateData: any = {
-      deletedAt: new Date(),
-      status: 'archived'
-    };
-    
-    if (deletedBy) {
-      updateData.deletedBy = new Types.ObjectId(deletedBy);
-    } else if (deletedBy === 'public') {
-      updateData.deletedBy = null; // Para usuário público
+    console.log("🔍 REPOSITORY softDelete - ID:", id, "deletedBy:", deletedBy); // ADICIONE LOG
+
+    if (!Types.ObjectId.isValid(id)) {
+      console.log("❌ ID inválido no repository.softDelete:", id);
+      return null;
     }
-    
-    return await Prayer.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true }
-    ).exec();
+
+    try {
+      // 🔥 CORREÇÃO: Verificar SE deletedBy existe E é válido antes de criar ObjectId
+      const updateData: any = {
+        deletedAt: new Date(),
+        status: "archived",
+      };
+
+      if (deletedBy) {
+        // ⚠️ VERIFICAÇÃO CRÍTICA: deletedBy pode ser "public" (string) não ObjectId!
+        if (Types.ObjectId.isValid(deletedBy)) {
+          updateData.deletedBy = new Types.ObjectId(deletedBy);
+          console.log("✅ deletedBy é ObjectId válido");
+        } else {
+          // Se não for ObjectId válido, guarda como string
+          updateData.deletedByString = deletedBy;
+          console.log(
+            "⚠️ deletedBy NÃO é ObjectId, guardando como string:",
+            deletedBy
+          );
+        }
+      }
+
+      console.log("📝 Dados para update:", updateData);
+
+      return await Prayer.findOneAndUpdate(
+        { _id: id, deletedAt: null },
+        updateData,
+        { new: true }
+      ).exec();
+    } catch (error) {
+      console.error("💥 ERRO em repository.softDelete:", error);
+      return null;
+    }
   }
 
   async restore(id: string): Promise<IPrayer | null> {
     if (!Types.ObjectId.isValid(id)) return null;
-    
+
     return await Prayer.findByIdAndUpdate(
       id,
       {
         deletedAt: null,
         deletedBy: null,
-        status: 'pending'
+        status: "pending",
       },
       { new: true }
     ).exec();
+  }
+
+  async findDeleted(): Promise<IPrayer[]> {
+    console.log("🗑️ REPOSITORY: Buscando pedidos deletados");
+    try {
+      const deletedPrayers = await Prayer.find({ deletedAt: { $ne: null } })
+        .sort({ deletedAt: -1 })
+        .exec();
+
+      console.log(`📋 Encontrados ${deletedPrayers.length} pedidos deletados`);
+      return deletedPrayers;
+    } catch (error) {
+      console.error("❌ REPOSITORY: Erro ao buscar deletados:", error);
+      return []; // Retorna array vazio
+    }
   }
 
   // ==================== HARD DELETE ====================
 
   async hardDelete(id: string): Promise<boolean> {
     if (!Types.ObjectId.isValid(id)) return false;
-    
+
     const result = await Prayer.deleteOne({ _id: id });
     return result.deletedCount > 0;
   }
 
   async hardDeleteMany(ids: string[]): Promise<number> {
-    const validIds = ids.filter(id => Types.ObjectId.isValid(id));
+    const validIds = ids.filter((id) => Types.ObjectId.isValid(id));
     if (validIds.length === 0) return 0;
-    
-    const result = await Prayer.deleteMany({ 
-      _id: { $in: validIds } 
-    });
+
+    const result = await Prayer.deleteMany({ _id: { $in: validIds } });
     return result.deletedCount;
   }
 
-  // ==================== MÉTODOS ESPECÍFICOS ====================
+  // ==================== OPERAÇÕES ESPECIAIS ====================
 
-  async findByPhone(phone: string): Promise<IPrayer[]> {
-    const cleanPhone = phone.replace(/\D/g, '');
-    const phoneWithPrefix = cleanPhone.startsWith('258') ? cleanPhone : `258${cleanPhone}`;
-    
-    return await Prayer.find({
-      phone: { $regex: phoneWithPrefix, $options: 'i' }
-      // Não filtrar por deletedAt para mostrar todos (incluindo deletados se necessário)
-    })
-    .sort('-createdAt')
-    .limit(50) // Aumentado para 50
-    .exec();
-  }
-
-  async findByPhoneActiveOnly(phone: string): Promise<IPrayer[]> {
-    const cleanPhone = phone.replace(/\D/g, '');
-    const phoneWithPrefix = cleanPhone.startsWith('258') ? cleanPhone : `258${cleanPhone}`;
-    
-    return await Prayer.find({
-      phone: { $regex: phoneWithPrefix, $options: 'i' },
-      deletedAt: null // Apenas ativos
-    })
-    .sort('-createdAt')
-    .limit(50)
-    .exec();
-  }
-
-  async markAsPrayed(id: string, prayerCount: number = 1): Promise<IPrayer | null> {
+  async updateStatus(
+    id: string,
+    status: string,
+    notes?: string
+  ): Promise<IPrayer | null> {
     if (!Types.ObjectId.isValid(id)) return null;
-    
-    return await Prayer.findOneAndUpdate(
-      { _id: id, deletedAt: null },
-      {
-        $inc: { prayerCount },
-        lastPrayedAt: new Date(),
-        status: 'in_prayer'
-      },
-      { new: true }
-    ).exec();
-  }
 
-  async updateStatus(id: string, status: string, notes?: string): Promise<IPrayer | null> {
-    if (!Types.ObjectId.isValid(id)) return null;
-    
-    const updateData: any = { status };
+    const updateData: any = {
+      status,
+      lastPrayedAt: status === "in_prayer" ? new Date() : undefined,
+    };
+
     if (notes) updateData.notes = notes;
-    
+
     return await Prayer.findOneAndUpdate(
       { _id: id, deletedAt: null },
       updateData,
@@ -223,14 +145,31 @@ export class PrayerRepository {
     ).exec();
   }
 
+  async markAsPrayed(
+    id: string,
+    prayerCount: number = 1
+  ): Promise<IPrayer | null> {
+    if (!Types.ObjectId.isValid(id)) return null;
+
+    return await Prayer.findOneAndUpdate(
+      { _id: id, deletedAt: null },
+      {
+        $inc: { prayerCount },
+        lastPrayedAt: new Date(),
+        status: "in_prayer",
+      },
+      { new: true }
+    ).exec();
+  }
+
   async assignTo(id: string, userId: string): Promise<IPrayer | null> {
     if (!Types.ObjectId.isValid(id)) return null;
-    
+
     return await Prayer.findOneAndUpdate(
       { _id: id, deletedAt: null },
       {
         assignedTo: new Types.ObjectId(userId),
-        status: 'in_prayer'
+        status: "in_prayer",
       },
       { new: true }
     ).exec();
@@ -238,126 +177,232 @@ export class PrayerRepository {
 
   // ==================== ESTATÍSTICAS ====================
 
-  async getStats(): Promise<PrayerStats> {
-    const [
-      total,
-      pending,
-      in_prayer,
-      completed,
-      archived,
-      deleted,
-      urgencyStats,
-      typeStats,
-      recentActivity
-    ] = await Promise.all([
-      // Totais
-      Prayer.countDocuments({}),
-      Prayer.countDocuments({ status: 'pending', deletedAt: null }),
-      Prayer.countDocuments({ status: 'in_prayer', deletedAt: null }),
-      Prayer.countDocuments({ status: 'completed', deletedAt: null }),
-      Prayer.countDocuments({ status: 'archived', deletedAt: null }),
-      Prayer.countDocuments({ deletedAt: { $ne: null } }),
-      
-      // Por urgência (apenas ativos)
-      Prayer.aggregate([
-        { $match: { deletedAt: null } },
-        { $group: { _id: '$urgency', count: { $sum: 1 } } }
-      ]),
-      
-      // Por tipo (apenas ativos)
-      Prayer.aggregate([
-        { $match: { deletedAt: null } },
-        { $group: { _id: '$prayerType', count: { $sum: 1 } } }
-      ]),
-      
-      // Atividade recente (últimas 24h, apenas ativos)
-      Prayer.countDocuments({ 
-        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-        deletedAt: null 
+  async getStats(): Promise<any> {
+    console.log("📊 REPOSITORY: Iniciando cálculo de estatísticas");
+
+    try {
+      // 1. Buscar TODOS os documentos ativos
+      const allActivePrayers = await Prayer.find({
+        deletedAt: null,
       })
-    ]);
-    
-    const byUrgency = {
-      low: 0,
-      medium: 0,
-      high: 0
-    };
-    
-    const byType: Record<string, number> = {};
-    
-    urgencyStats.forEach((stat: any) => {
-      byUrgency[stat._id as keyof typeof byUrgency] = stat.count;
-    });
-    
-    typeStats.forEach((stat: any) => {
-      byType[stat._id] = stat.count;
-    });
-    
+        .lean()
+        .exec();
+
+      console.log(`📦 Total de pedidos ativos: ${allActivePrayers.length}`);
+
+      if (allActivePrayers.length === 0) {
+        return this.getEmptyStats();
+      }
+
+      // 2. Calcular estatísticas com fallbacks
+      const total = allActivePrayers.length;
+
+      // Contar por status (com fallback para "pending" se não existir)
+      const pending = allActivePrayers.filter(
+        (p) => (p.status || "pending") === "pending"
+      ).length;
+
+      const in_prayer = allActivePrayers.filter(
+        (p) => (p.status || "pending") === "in_prayer"
+      ).length;
+
+      const completed = allActivePrayers.filter(
+        (p) => (p.status || "pending") === "completed"
+      ).length;
+
+      const archived = allActivePrayers.filter(
+        (p) => (p.status || "pending") === "archived"
+      ).length;
+
+      // 3. Distribuição por urgência (com fallback para "medium")
+      const byUrgency = { low: 0, medium: 0, high: 0 };
+      allActivePrayers.forEach((prayer) => {
+        const urgency = prayer.urgency || "medium";
+        if (urgency === "low") byUrgency.low++;
+        else if (urgency === "medium") byUrgency.medium++;
+        else if (urgency === "high") byUrgency.high++;
+      });
+
+      // 4. Distribuição por tipo (com fallback para "outro")
+      const byType: Record<string, number> = {};
+      allActivePrayers.forEach((prayer) => {
+        const type = prayer.prayerType || "outro";
+        byType[type] = (byType[type] || 0) + 1;
+      });
+
+      // 5. Tendência semanal
+      const weeklyTrend = await this.getWeeklyTrend();
+
+      console.log("✅ Estatísticas calculadas:", {
+        total,
+        pending,
+        in_prayer,
+        completed,
+        archived,
+      });
+
+      return {
+        total,
+        pending,
+        in_prayer,
+        completed,
+        archived,
+        byUrgency,
+        byType,
+        weeklyTrend,
+      };
+    } catch (error: any) {
+      console.error("❌ ERRO em getStats:", error.message);
+      return this.getEmptyStats();
+    }
+  }
+
+  private getEmptyStats(): any {
     return {
-      total,
-      pending,
-      in_prayer,
-      completed,
-      archived,
-      deleted,
-      byUrgency,
-      byType,
-      recentActivity
+      total: 0,
+      pending: 0,
+      in_prayer: 0,
+      completed: 0,
+      archived: 0,
+      byUrgency: { low: 0, medium: 0, high: 0 },
+      byType: {},
+      weeklyTrend: [0, 0, 0, 0, 0, 0, 0],
     };
   }
 
-  // ==================== QUERIES ESPECIAIS ====================
+  private async getWeeklyTrend(): Promise<number[]> {
+    try {
+      const trend: number[] = [];
+      const today = new Date();
+
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const count = await Prayer.countDocuments({
+          createdAt: { $gte: startOfDay, $lte: endOfDay },
+          deletedAt: null,
+        });
+
+        trend.push(count);
+      }
+
+      return trend;
+    } catch (error) {
+      console.error("❌ Erro ao calcular tendência semanal:", error);
+      return [0, 0, 0, 0, 0, 0, 0];
+    }
+  }
 
   async getUrgentPending(): Promise<IPrayer[]> {
-    return await Prayer.find({
-      urgency: 'high',
-      status: 'pending',
-      deletedAt: null
-    })
-    .sort('createdAt')
-    .limit(20)
-    .exec();
+    try {
+      console.log("⚠️ REPOSITORY: Buscando urgentes pendentes...");
+
+      // Buscar urgentes (high) que estão pendentes OU não têm status
+      const urgentPrayers = await Prayer.find({
+        deletedAt: null,
+        urgency: "high",
+        $or: [{ status: "pending" }, { status: { $exists: false } }],
+      })
+        .sort({ createdAt: 1 })
+        .limit(20)
+        .exec();
+
+      console.log(`🔴 Urgentes pendentes encontrados: ${urgentPrayers.length}`);
+      return urgentPrayers;
+    } catch (error) {
+      console.error("❌ Erro ao buscar urgentes pendentes:", error);
+      return [];
+    }
   }
 
-  async getRecent(days: number = 7): Promise<IPrayer[]> {
-    const date = new Date();
-    date.setDate(date.getDate() - days);
-    
-    return await Prayer.find({
-      createdAt: { $gte: date },
-      deletedAt: null
-    })
-    .sort('-createdAt')
-    .exec();
-  }
-
-  async getSummary(): Promise<PrayerSummary[]> {
-    return await Prayer.find({ deletedAt: null })
-      .select('name phone prayerType description urgency status prayerCount lastPrayedAt createdAt')
-      .sort('-createdAt')
-      .limit(50)
-      .lean()
-      .exec() as PrayerSummary[];
-  }
-
-  // ==================== MÉTODOS DE VERIFICAÇÃO ====================
-
-  async isPhoneOwner(prayerId: string, phone: string): Promise<boolean> {
-    if (!Types.ObjectId.isValid(prayerId)) return false;
-    
-    const cleanPhone = phone.replace(/\D/g, '');
-    const phoneWithPrefix = cleanPhone.startsWith('258') ? cleanPhone : `258${cleanPhone.slice(-9)}`;
-    
-    const prayer = await Prayer.findOne({
-      _id: prayerId,
-      phone: { $regex: phoneWithPrefix, $options: 'i' }
-    }).exec();
-    
-    return !!prayer;
-  }
-
-  async getActivePrayerById(id: string): Promise<IPrayer | null> {
+  // ==================== BUSCA POR TELEFONE ====================
+  async findDeletedById(id: string): Promise<IPrayer | null> {
     if (!Types.ObjectId.isValid(id)) return null;
-    return await Prayer.findOne({ _id: id, deletedAt: null }).exec();
+    return await Prayer.findOne({
+      _id: id,
+      deletedAt: { $ne: null },
+    }).exec();
+  }
+  async findByPhone(phone: string): Promise<IPrayer[]> {
+    try {
+      // Limpar e formatar telefone
+      const cleanPhone = phone.replace(/\D/g, "").slice(-9);
+
+      // Buscar por últimos 9 dígitos
+      return await Prayer.find({
+        phone: { $regex: cleanPhone + "$" },
+        deletedAt: null,
+      })
+        .sort("-createdAt")
+        .limit(50)
+        .exec();
+    } catch (error) {
+      console.error("❌ Erro ao buscar por telefone:", error);
+      return [];
+    }
+  }
+  async isPhoneOwner(prayerId: string, phone: string): Promise<boolean> {
+    console.log(
+      `🔍 REPOSITORY isPhoneOwner: prayerId=${prayerId}, phone=${phone}`
+    );
+
+    if (!Types.ObjectId.isValid(prayerId)) {
+      console.log("❌ prayerId inválido");
+      return false;
+    }
+
+    try {
+      // Limpar ambos os telefones da mesma forma
+      const cleanInputPhone = phone.replace(/\D/g, "");
+      const last9Digits =
+        cleanInputPhone.length >= 9
+          ? cleanInputPhone.substring(cleanInputPhone.length - 9)
+          : cleanInputPhone;
+
+      console.log(`📱 Últimos 9 dígitos do input: ${last9Digits}`);
+
+      // Buscar o pedido (mesmo deletado, pois queremos verificar propriedade)
+      const prayer = await Prayer.findOne({
+        _id: prayerId,
+      });
+
+      if (!prayer) {
+        console.log("❌ Pedido não encontrado no banco");
+        return false;
+      }
+
+      console.log(`📞 Telefone do pedido no banco: ${prayer.phone}`);
+
+      // Limpar telefone do banco
+      const cleanDbPhone = prayer.phone.replace(/\D/g, "");
+      const last9DbDigits =
+        cleanDbPhone.length >= 9
+          ? cleanDbPhone.substring(cleanDbPhone.length - 9)
+          : cleanDbPhone;
+
+      console.log(`📱 Últimos 9 dígitos do banco: ${last9DbDigits}`);
+
+      // Comparação 1: últimos 9 dígitos
+      const matchByLast9 = last9Digits === last9DbDigits;
+
+      // Comparação 2: telefone completo
+      const matchFull = cleanInputPhone === cleanDbPhone;
+
+      console.log(
+        `🔍 Comparação: matchByLast9=${matchByLast9}, matchFull=${matchFull}`
+      );
+
+      return matchByLast9 || matchFull;
+    } catch (error) {
+      console.error("💥 Erro em isPhoneOwner:", error);
+      return false;
+    }
   }
 }

@@ -1,219 +1,54 @@
-// src/modules/prayers/services/prayerService.ts
 import { PrayerRepository } from "../repositories/prayerRepository";
-import {
-  IPrayer,
-  CreatePrayerDto,
-  UpdatePrayerDto,
-  FilterPrayerDto,
-  PrayerStats,
-} from "../interfaces/prayer.interface";
+import { IPrayer } from "../interfaces/prayer.interface";
 
 export class PrayerService {
   private prayerRepository: PrayerRepository;
 
   constructor() {
     this.prayerRepository = new PrayerRepository();
+    console.log("✅ SERVICE: PrayerService inicializado");
   }
 
-  // ==================== VALIDAÇÃO ====================
+  // ==================== CRUD BÁSICO ====================
 
-  private validatePhone(phone: string): string {
-    const cleanPhone = phone.replace(/\D/g, "");
-
-    if (cleanPhone.length < 9) {
-      throw new Error("Telefone deve ter pelo menos 9 dígitos");
-    }
-
-    // Adiciona prefixo de Moçambique se necessário
-    if (!cleanPhone.startsWith("258") && cleanPhone.length >= 9) {
-      return `258${cleanPhone.slice(-9)}`;
-    }
-
-    return cleanPhone;
+  async getAllPrayers(): Promise<IPrayer[]> {
+    console.log("📋 SERVICE: Buscando todos os pedidos");
+    return await this.prayerRepository.findAll();
   }
 
-  private validatePrayerData(data: CreatePrayerDto): CreatePrayerDto {
+  async getPrayerById(id: string): Promise<IPrayer | null> {
+    console.log(`🔍 SERVICE: Buscando pedido por ID: ${id}`);
+    if (!id) throw new Error("ID do pedido é obrigatório");
+    return await this.prayerRepository.findById(id);
+  }
+
+  async createPrayerRequest(data: any): Promise<IPrayer> {
+    console.log("➕ SERVICE: Criando novo pedido");
+
     // Validações básicas
-    if (!data.name?.trim()) {
-      throw new Error("Nome é obrigatório");
-    }
-
-    if (!data.phone?.trim()) {
-      throw new Error("Telefone é obrigatório");
-    }
-
-    if (!data.prayerType) {
-      throw new Error("Tipo de oração é obrigatório");
-    }
-
+    if (!data.name?.trim()) throw new Error("Nome é obrigatório");
+    if (!data.phone?.trim()) throw new Error("Telefone é obrigatório");
+    if (!data.prayerType) throw new Error("Tipo de oração é obrigatório");
     if (!data.description?.trim() || data.description.length < 10) {
       throw new Error("Descrição deve ter pelo menos 10 caracteres");
     }
 
-    // Formata telefone
-    const formattedData = {
+    // Garantir campos padrão
+    const prayerData = {
       ...data,
-      phone: this.validatePhone(data.phone),
-      name: data.name.trim(),
-      description: data.description.trim(),
-      email: data.email?.trim(),
+      status: data.status || "pending",
       urgency: data.urgency || "medium",
       contactPreference: data.contactPreference || "whatsapp",
+      createdBy: "public",
     };
 
-    return formattedData;
+    return await this.prayerRepository.create(prayerData);
   }
 
-  // ==================== CRUD PÚBLICO ====================
-
-  async createPrayerRequest(data: CreatePrayerDto): Promise<IPrayer> {
-    try {
-      console.log("📿 Criando pedido de oração:", data.name);
-
-      // Valida e formata dados
-      const validatedData = this.validatePrayerData(data);
-
-      // Verifica se já existe pedido recente com o mesmo telefone
-      const recentPrayers = await this.prayerRepository.findByPhoneActiveOnly(
-        validatedData.phone
-      );
-      if (recentPrayers.length > 0) {
-        console.log(
-          `⚠️ Encontrado ${recentPrayers.length} pedidos anteriores para este telefone`
-        );
-      }
-
-      // Cria o pedido
-      const prayer = await this.prayerRepository.create(validatedData);
-
-      console.log("✅ Pedido criado com sucesso:", prayer._id);
-      return prayer;
-    } catch (error: any) {
-      console.error("❌ Erro ao criar pedido de oração:", error.message);
-      throw error;
-    }
-  }
-
-  async searchPrayersByPhone(phone: string): Promise<IPrayer[]> {
-    if (!phone?.trim()) {
-      throw new Error("Telefone é obrigatório para busca");
-    }
-
-    const cleanPhone = this.validatePhone(phone);
-    return await this.prayerRepository.findByPhone(cleanPhone);
-  }
-
-  async searchMyPrayersByPhone(phone: string): Promise<IPrayer[]> {
-    if (!phone?.trim()) {
-      throw new Error("Telefone é obrigatório para busca");
-    }
-
-    const cleanPhone = this.validatePhone(phone);
-    return await this.prayerRepository.findByPhoneActiveOnly(cleanPhone);
-  }
-
-  async getPrayerForEdit(id: string, phone: string): Promise<IPrayer | null> {
-    if (!id) throw new Error("ID é obrigatório");
-    if (!phone) throw new Error("Telefone é obrigatório");
-
-    // Verifica se o pedido pertence ao telefone
-    const isOwner = await this.prayerRepository.isPhoneOwner(id, phone);
-    if (!isOwner) {
-      throw new Error("Você não tem permissão para editar este pedido");
-    }
-
-    const prayer = await this.prayerRepository.getActivePrayerById(id);
-    if (!prayer) {
-      throw new Error("Pedido não encontrado ou foi eliminado");
-    }
-
-    return prayer;
-  }
-
-  async updateMyPrayerRequest(
-    id: string,
-    data: UpdatePrayerDto,
-    phone: string
-  ): Promise<IPrayer | null> {
-    if (!id) throw new Error("ID é obrigatório");
-    if (!phone) throw new Error("Telefone é obrigatório");
-
-    // Verifica se o pedido pertence ao telefone
-    const isOwner = await this.prayerRepository.isPhoneOwner(id, phone);
-    if (!isOwner) {
-      throw new Error("Você não tem permissão para atualizar este pedido");
-    }
-
-    // Verifica se o pedido está ativo
-    const prayer = await this.prayerRepository.getActivePrayerById(id);
-    if (!prayer) {
-      throw new Error("Pedido não encontrado ou foi eliminado");
-    }
-
-    // Remove campos restritos
-    const restrictedFields = [
-      "status",
-      "assignedTo",
-      "prayerCount",
-      "lastPrayedAt",
-      "deletedAt",
-      "deletedBy",
-      "phone",
-    ];
-    restrictedFields.forEach((field) => {
-      delete data[field as keyof UpdatePrayerDto];
-    });
-
-    return await this.prayerRepository.updateActive(id, data);
-  }
-
-  async deleteMyPrayer(id: string, phone: string): Promise<IPrayer | null> {
-    if (!id) throw new Error("ID é obrigatório");
-    if (!phone) throw new Error("Telefone é obrigatório");
-
-    // Verifica se o pedido pertence ao telefone
-    const isOwner = await this.prayerRepository.isPhoneOwner(id, phone);
-    if (!isOwner) {
-      throw new Error("Você não tem permissão para eliminar este pedido");
-    }
-
-    // Verifica se o pedido já está deletado
-    const prayer = await this.prayerRepository.getActivePrayerById(id);
-    if (!prayer) {
-      throw new Error("Pedido não encontrado ou já foi eliminado");
-    }
-
-    return await this.prayerRepository.softDelete(id, "public");
-  }
-
-  // ==================== CRUD ADMINISTRATIVO ====================
-
-  async getAllPrayers(
-    filters: FilterPrayerDto = {},
-    page: number = 1,
-    limit: number = 20,
-    sortBy: string = "-createdAt"
-  ) {
-    return await this.prayerRepository.findAll(filters, page, limit, sortBy);
-  }
-
-  async getPrayerById(id: string): Promise<IPrayer | null> {
-    if (!id) throw new Error("ID é obrigatório");
-    return await this.prayerRepository.findById(id); // Admin pode ver deletados
-  }
-
-  async updatePrayer(
-    id: string,
-    data: UpdatePrayerDto
-  ): Promise<IPrayer | null> {
-    if (!id) throw new Error("ID é obrigatório");
-
-    // Validações administrativas
-    if (data.status === "completed" && !data.lastPrayedAt) {
-      data.lastPrayedAt = new Date();
-    }
-
-    return await this.prayerRepository.update(id, data); // Admin pode atualizar deletados
+  async updatePrayer(id: string, data: any): Promise<IPrayer | null> {
+    console.log(`✏️ SERVICE: Atualizando pedido: ${id}`);
+    if (!id) throw new Error("ID do pedido é obrigatório");
+    return await this.prayerRepository.update(id, data);
   }
 
   // ==================== SOFT DELETE ====================
@@ -222,58 +57,70 @@ export class PrayerService {
     id: string,
     deletedBy?: string
   ): Promise<IPrayer | null> {
-    if (!id) throw new Error("ID é obrigatório");
+    console.log(`🗑️ SERVICE: Arquivando pedido: ${id}`);
+    if (!id) throw new Error("ID do pedido é obrigatório");
     return await this.prayerRepository.softDelete(id, deletedBy);
   }
 
   async restorePrayer(id: string): Promise<IPrayer | null> {
-    if (!id) throw new Error("ID é obrigatório");
+    console.log(`♻️ SERVICE: Restaurando pedido: ${id}`);
+    if (!id) throw new Error("ID do pedido é obrigatório");
     return await this.prayerRepository.restore(id);
   }
-
   async getDeletedPrayers(): Promise<IPrayer[]> {
-    return await this.prayerRepository
-      .findAll({ includeDeleted: true }, 1, 1000)
-      .then((r) => r.data);
+    console.log("📋 SERVICE: Buscando pedidos deletados");
+    return await this.prayerRepository.findDeleted();
   }
-
   // ==================== HARD DELETE ====================
 
   async hardDeletePrayer(id: string): Promise<boolean> {
-    if (!id) throw new Error("ID é obrigatório");
+    console.log(`💥 SERVICE: Excluindo permanentemente pedido: ${id}`);
+    if (!id) throw new Error("ID do pedido é obrigatório");
     return await this.prayerRepository.hardDelete(id);
   }
 
   async hardDeleteMany(ids: string[]): Promise<number> {
+    console.log(`💥 SERVICE: Processando exclusão de ${ids.length} pedido(s)`);
+
+    // Array vazio é permitido - retorna 0
     if (!ids || ids.length === 0) {
-      throw new Error("IDs são obrigatórios");
+      return 0;
     }
 
     return await this.prayerRepository.hardDeleteMany(ids);
   }
-
   // ==================== OPERAÇÕES ESPECIAIS ====================
-
-  async markAsPrayed(
-    id: string,
-    prayerCount: number = 1
-  ): Promise<IPrayer | null> {
-    if (!id) throw new Error("ID é obrigatório");
-    return await this.prayerRepository.markAsPrayed(id, prayerCount);
-  }
 
   async updatePrayerStatus(
     id: string,
     status: string,
     notes?: string
   ): Promise<IPrayer | null> {
-    if (!id) throw new Error("ID é obrigatório");
-    if (!status) throw new Error("Status é obrigatório");
+    console.log(
+      `🔄 SERVICE: Atualizando status do pedido ${id} para ${status}`
+    );
+
+    if (!id) throw new Error("ID do pedido é obrigatório");
+
+    const validStatuses = ["pending", "in_prayer", "completed", "archived"];
+    if (!validStatuses.includes(status)) {
+      throw new Error(`Status inválido. Use: ${validStatuses.join(", ")}`);
+    }
 
     return await this.prayerRepository.updateStatus(id, status, notes);
   }
 
+  async markAsPrayed(
+    id: string,
+    prayerCount: number = 1
+  ): Promise<IPrayer | null> {
+    console.log(`🙏 SERVICE: Marcando pedido ${id} como orado`);
+    if (!id) throw new Error("ID do pedido é obrigatório");
+    return await this.prayerRepository.markAsPrayed(id, prayerCount);
+  }
+
   async assignPrayer(id: string, userId: string): Promise<IPrayer | null> {
+    console.log(`👤 SERVICE: Atribuindo pedido ${id} ao usuário ${userId}`);
     if (!id) throw new Error("ID do pedido é obrigatório");
     if (!userId) throw new Error("ID do usuário é obrigatório");
 
@@ -282,46 +129,108 @@ export class PrayerService {
 
   // ==================== ESTATÍSTICAS ====================
 
-  async getPrayerStats(): Promise<PrayerStats> {
-    return await this.prayerRepository.getStats();
+  async getPrayerStats(): Promise<any> {
+    console.log("📊 SERVICE: Buscando estatísticas");
+    try {
+      const stats = await this.prayerRepository.getStats();
+      console.log(`✅ SERVICE: Estatísticas obtidas - Total: ${stats.total}`);
+      return stats;
+    } catch (error: any) {
+      console.error("❌ SERVICE: Erro ao buscar estatísticas:", error.message);
+      throw error; // Propaga o erro para o controller
+    }
   }
 
   async getUrgentPendingPrayers(): Promise<IPrayer[]> {
+    console.log("⚠️ SERVICE: Buscando urgentes pendentes");
     return await this.prayerRepository.getUrgentPending();
   }
 
-  async getRecentPrayers(days: number = 7): Promise<IPrayer[]> {
-    if (days < 1 || days > 365) {
-      throw new Error("Período deve ser entre 1 e 365 dias");
+  // ==================== PÚBLICO ====================
+
+  async searchMyPrayersByPhone(phone: string): Promise<IPrayer[]> {
+    console.log(`📱 SERVICE: Buscando pedidos do telefone: ${phone}`);
+    if (!phone?.trim()) throw new Error("Telefone é obrigatório");
+    return await this.prayerRepository.findByPhone(phone);
+  }
+
+  async getPrayerForEdit(id: string, phone: string): Promise<IPrayer | null> {
+    console.log(
+      `✏️ SERVICE: Buscando pedido ${id} para edição (telefone: ${phone})`
+    );
+
+    if (!id) throw new Error("ID é obrigatório");
+    if (!phone) throw new Error("Telefone é obrigatório");
+
+    // 1. Verificar se o telefone é dono do pedido (mesmo se deletado)
+    const isOwner = await this.prayerRepository.isPhoneOwner(id, phone);
+    console.log(`📱 Resultado isPhoneOwner: ${isOwner}`);
+
+    if (!isOwner) {
+      throw new Error("Você não tem permissão para editar este pedido");
     }
 
-    return await this.prayerRepository.getRecent(days);
+    // 2. Buscar o pedido (APENAS se não estiver deletado!)
+    const prayer = await this.prayerRepository.findById(id);
+    console.log(`📄 Pedido encontrado (não deletado): ${!!prayer}`);
+
+    if (!prayer) {
+      // Verificar se foi deletado
+      const deletedPrayer = await this.prayerRepository.findDeletedById(id);
+      if (deletedPrayer) {
+        throw new Error("Este pedido foi arquivado e não pode ser editado");
+      }
+      throw new Error("Pedido não encontrado");
+    }
+
+    return prayer;
   }
 
-  async getPrayerSummary(): Promise<any[]> {
-    return await this.prayerRepository.getSummary();
+  async updateMyPrayerRequest(
+    id: string,
+    data: any,
+    phone: string
+  ): Promise<IPrayer | null> {
+    console.log(`✏️ SERVICE: Atualizando pedido ${id} (telefone: ${phone})`);
+
+    if (!id) throw new Error("ID é obrigatório");
+    if (!phone) throw new Error("Telefone é obrigatório");
+
+    // Verificar se o telefone é dono do pedido
+    const isOwner = await this.prayerRepository.isPhoneOwner(id, phone);
+    if (!isOwner)
+      throw new Error("Você não tem permissão para atualizar este pedido");
+
+    // Remover campos restritos
+    const restrictedFields = [
+      "status",
+      "assignedTo",
+      "prayerCount",
+      "lastPrayedAt",
+      "phone",
+    ];
+    const safeData = { ...data };
+    restrictedFields.forEach((field) => {
+      delete safeData[field];
+    });
+
+    return await this.prayerRepository.update(id, safeData);
   }
 
-  // ==================== UTILITÁRIOS ====================
+  async deleteMyPrayer(id: string, phone: string): Promise<IPrayer | null> {
+    console.log(`🗑️ SERVICE: deleteMyPrayer - ID: ${id}, Phone: ${phone}`);
 
-  async isPhoneRegistered(phone: string): Promise<boolean> {
-    const cleanPhone = this.validatePhone(phone);
-    const prayers = await this.prayerRepository.findByPhone(cleanPhone);
-    return prayers.length > 0;
-  }
+    if (!id) throw new Error("ID é obrigatório");
+    if (!phone) throw new Error("Telefone é obrigatório");
 
-  async getPrayerHistory(phone: string): Promise<IPrayer[]> {
-    const cleanPhone = this.validatePhone(phone);
-    return await this.prayerRepository.findByPhone(cleanPhone);
-  }
+    // Verificar se o telefone é dono do pedido
+    const isOwner = await this.prayerRepository.isPhoneOwner(id, phone);
+    console.log(`📱 É dono? ${isOwner}`);
 
-  // ==================== NOVOS MÉTODOS PARA CONTROLLER ====================
+    if (!isOwner)
+      throw new Error("Você não tem permissão para eliminar este pedido");
 
-  async verifyPrayerOwnership(id: string, phone: string): Promise<boolean> {
-    return await this.prayerRepository.isPhoneOwner(id, phone);
-  }
-
-  async getActivePrayer(id: string): Promise<IPrayer | null> {
-    return await this.prayerRepository.getActivePrayerById(id);
+    // 🔥 CORREÇÃO: Passar "public" como string, NÃO como undefined
+    return await this.prayerRepository.softDelete(id, "public");
   }
 }

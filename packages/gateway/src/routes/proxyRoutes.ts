@@ -1,9 +1,30 @@
+// src/routes/proxy-routes.ts
 import { Router, Request, Response } from "express";
-import { createProxyMiddleware, Options, RequestHandler } from "http-proxy-middleware";
+import {
+  createProxyMiddleware,
+  Options,
+  RequestHandler,
+} from "http-proxy-middleware";
 import { proxyLogger } from "../middlewares/proxyLogger";
-import type { Server } from "http-proxy-middleware/dist/types";
+import type Server from "http-proxy-middleware/dist/types";
 
 const router = Router();
+
+// ========== MIDDLEWARE DE DEBUG ==========
+router.use((req: Request, res: Response, next: any) => {
+  const url = req.originalUrl;
+
+  // Log todas as requisições para debugging
+  if (url.includes("/prayers") || url.includes("/debug")) {
+    console.log(`🔍 [GATEWAY-DEBUG-INCOMING] ${req.method} ${url}`);
+    console.log(`🔍 [GATEWAY-DEBUG-HEADERS] Host: ${req.headers.host}`);
+    console.log(
+      `🔍 [GATEWAY-DEBUG-HEADERS] User-Agent: ${req.headers["user-agent"]}`
+    );
+  }
+
+  next();
+});
 
 // ========== VALIDAÇÃO DAS VARIÁVEIS DE AMBIENTE ==========
 
@@ -101,26 +122,37 @@ type OnProxyReqFn = (
   options: Server.Options
 ) => void;
 
-type OnProxyResFn = (
-  proxyRes: any,
-  req: Request,
-  res: Response
-) => void;
+type OnProxyResFn = (proxyRes: any, req: Request, res: Response) => void;
 
-// ========== CONFIGURAÇÕES DOS SERVIÇOS (DO .env) ==========
+// ========== CONFIGURAÇÕES DOS SERVIÇOS ==========
 
 const proxyConfigs: Record<string, Options> = {
-  chatbot: {
-    target: getRequiredString("CHATBOT_URL"),
+  // ========== CONFIGURAÇÃO PRAYERS (PRINCIPAL) ==========
+  prayers: {
+    target: getRequiredString("MANAGEMENT_URL"),
     changeOrigin: true,
     logLevel: process.env.NODE_ENV === "development" ? "debug" : "info",
     timeout: getRequiredNumber("PROXY_TIMEOUT"),
     proxyTimeout: getRequiredNumber("PROXY_TIMEOUT"),
     pathRewrite: {
-      "^/api/chatbot": "",
+      "^/prayers": "/api/management/prayers",
     },
     onProxyReq: (proxyReq, req, res, options) => {
-      proxyReq.setHeader("X-Gateway-Service", "chatbot");
+      const originalUrl = req.originalUrl;
+      const transformedUrl = originalUrl.replace(
+        "/prayers",
+        "/api/management/prayers"
+      );
+
+      console.log(`📿 [GATEWAY-PRAYER-PROXY] ${req.method} ${originalUrl}`);
+      console.log(
+        `📿 [GATEWAY-PRAYER-TRANSFORM] ${originalUrl} → ${transformedUrl}`
+      );
+      console.log(
+        `📿 [GATEWAY-PRAYER-TARGET] ${getRequiredString("MANAGEMENT_URL")}`
+      );
+
+      proxyReq.setHeader("X-Gateway-Service", "prayers");
       proxyReq.setHeader("X-Gateway-Timestamp", Date.now().toString());
       proxyReq.setHeader(
         "X-Forwarded-For",
@@ -128,20 +160,28 @@ const proxyConfigs: Record<string, Options> = {
       );
       proxyReq.setHeader("X-Forwarded-Host", req.headers.host || "");
 
-      const apiKey = getOptionalString("CHATBOT_API_KEY");
-      if (apiKey) {
-        proxyReq.setHeader("X-API-Key", apiKey);
+      if (req.headers.authorization) {
+        proxyReq.setHeader("Authorization", req.headers.authorization);
+      }
+
+      if (req.headers["content-type"]) {
+        proxyReq.setHeader("Content-Type", req.headers["content-type"]);
       }
 
       if (
         req.method === "POST" ||
         req.method === "PUT" ||
-        req.method === "PATCH"
+        req.method === "PATCH" ||
+        req.method === "DELETE"
       ) {
         if (req.body) {
           const bodyData = JSON.stringify(req.body);
+          if (!proxyReq.getHeader("Content-Type")) {
+            proxyReq.setHeader("Content-Type", "application/json");
+          }
           proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
           proxyReq.write(bodyData);
+          console.log(`📦 [GATEWAY-PRAYER-BODY] ${bodyData.length} bytes`);
         }
       }
     },
@@ -149,25 +189,52 @@ const proxyConfigs: Record<string, Options> = {
       const statusCode = proxyRes.statusCode || 0;
       const originalUrl = req.originalUrl;
 
-      console.log(`✅ [GATEWAY-CHATBOT] ${statusCode} ${originalUrl}`);
+      console.log(`✅ [GATEWAY-PRAYER-RESPONSE] ${statusCode} ${originalUrl}`);
 
       proxyRes.headers["X-Gateway-Processed"] = "true";
-      proxyRes.headers["X-Gateway-Service"] = "chatbot";
+      proxyRes.headers["X-Gateway-Service"] = "prayers";
       proxyRes.headers["X-Gateway-Response-Time"] = Date.now().toString();
+
+      if (statusCode === 200 || statusCode === 201) {
+        console.log(`🟢 [GATEWAY-PRAYER-SUCCESS] ${originalUrl}`);
+      } else if (statusCode >= 400) {
+        console.log(`🔴 [GATEWAY-PRAYER-ERROR] ${statusCode} ${originalUrl}`);
+      }
     },
     onError: (err, req, res) => {
       const errorWithCode = err as ErrorWithCode;
-      console.error("[PROXY ERROR] Chatbot:", errorWithCode.message);
-      res.status(502).json({
-        error: "Bad Gateway",
-        message: "Chatbot service is not responding",
-        service: "chatbot",
-        target: getRequiredString("CHATBOT_URL"),
+      const originalUrl = req.originalUrl;
+      const target = getRequiredString("MANAGEMENT_URL");
+
+      console.error("❌ [GATEWAY-PRAYER-FATAL]:", {
+        message: errorWithCode.message,
+        code: errorWithCode.code,
+        url: originalUrl,
+        target: target,
+        method: req.method,
         timestamp: new Date().toISOString(),
+      });
+
+      res.status(502).json({
+        success: false,
+        error: "Bad Gateway",
+        message: "Prayers service is not responding",
+        service: "prayers",
+        target: target,
+        requestUrl: originalUrl,
+        requestMethod: req.method,
+        timestamp: new Date().toISOString(),
+        gatewayError: errorWithCode.message,
+        debug: {
+          managementUrl: getRequiredString("MANAGEMENT_URL"),
+          route: "/prayers",
+          expectedPath: "/api/management/prayers",
+        },
       });
     },
   },
-  
+
+  // ========== CONFIGURAÇÃO MANAGEMENT ==========
   management: {
     target: getRequiredString("MANAGEMENT_URL"),
     changeOrigin: true,
@@ -178,6 +245,14 @@ const proxyConfigs: Record<string, Options> = {
       "^/api/management": "/api/management",
     },
     onProxyReq: (proxyReq, req, res, options) => {
+      // Excluir /prayers do proxy management para evitar conflito
+      if (req.originalUrl.includes("/prayers")) {
+        console.log(
+          `⚠️ [GATEWAY-MANAGEMENT-SKIP] ${req.originalUrl} - Rota tratada por prayers proxy`
+        );
+        return;
+      }
+
       proxyReq.setHeader("X-Gateway-Service", "management");
       proxyReq.setHeader("X-Gateway-Timestamp", Date.now().toString());
       proxyReq.setHeader(
@@ -236,7 +311,66 @@ const proxyConfigs: Record<string, Options> = {
       });
     },
   },
-  
+
+  // ========== CONFIGURAÇÕES OUTROS SERVIÇOS ==========
+  chatbot: {
+    target: getRequiredString("CHATBOT_URL"),
+    changeOrigin: true,
+    logLevel: process.env.NODE_ENV === "development" ? "debug" : "info",
+    timeout: getRequiredNumber("PROXY_TIMEOUT"),
+    proxyTimeout: getRequiredNumber("PROXY_TIMEOUT"),
+    pathRewrite: {
+      "^/api/chatbot": "",
+    },
+    onProxyReq: (proxyReq, req, res, options) => {
+      proxyReq.setHeader("X-Gateway-Service", "chatbot");
+      proxyReq.setHeader("X-Gateway-Timestamp", Date.now().toString());
+      proxyReq.setHeader(
+        "X-Forwarded-For",
+        req.ip || req.socket.remoteAddress || ""
+      );
+      proxyReq.setHeader("X-Forwarded-Host", req.headers.host || "");
+
+      const apiKey = getOptionalString("CHATBOT_API_KEY");
+      if (apiKey) {
+        proxyReq.setHeader("X-API-Key", apiKey);
+      }
+
+      if (
+        req.method === "POST" ||
+        req.method === "PUT" ||
+        req.method === "PATCH"
+      ) {
+        if (req.body) {
+          const bodyData = JSON.stringify(req.body);
+          proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
+          proxyReq.write(bodyData);
+        }
+      }
+    },
+    onProxyRes: (proxyRes, req, res) => {
+      const statusCode = proxyRes.statusCode || 0;
+      const originalUrl = req.originalUrl;
+
+      console.log(`✅ [GATEWAY-CHATBOT] ${statusCode} ${originalUrl}`);
+
+      proxyRes.headers["X-Gateway-Processed"] = "true";
+      proxyRes.headers["X-Gateway-Service"] = "chatbot";
+      proxyRes.headers["X-Gateway-Response-Time"] = Date.now().toString();
+    },
+    onError: (err, req, res) => {
+      const errorWithCode = err as ErrorWithCode;
+      console.error("[PROXY ERROR] Chatbot:", errorWithCode.message);
+      res.status(502).json({
+        error: "Bad Gateway",
+        message: "Chatbot service is not responding",
+        service: "chatbot",
+        target: getRequiredString("CHATBOT_URL"),
+        timestamp: new Date().toISOString(),
+      });
+    },
+  },
+
   monitoring: {
     target: getRequiredString("MONITORING_URL"),
     changeOrigin: true,
@@ -316,7 +450,9 @@ const proxyConfigs: Record<string, Options> = {
       if (statusCode === 200) {
         console.log(`🟢 [GATEWAY-MONITORING] Sucesso: ${originalUrl}`);
       } else if (statusCode >= 400) {
-        console.log(`🔴 [GATEWAY-MONITORING] Erro ${statusCode}: ${originalUrl}`);
+        console.log(
+          `🔴 [GATEWAY-MONITORING] Erro ${statusCode}: ${originalUrl}`
+        );
       }
     },
     onError: (err, req, res) => {
@@ -347,7 +483,7 @@ const proxyConfigs: Record<string, Options> = {
       });
     },
   },
-  
+
   notify: {
     target: getRequiredString("NOTIFY_URL"),
     changeOrigin: true,
@@ -393,100 +529,6 @@ const proxyConfigs: Record<string, Options> = {
       });
     },
   },
-  
-  // ========== NOVA CONFIGURAÇÃO PARA ORAÇÕES ==========
-  prayers: {
-    target: getRequiredString("MANAGEMENT_URL"),
-    changeOrigin: true,
-    logLevel: process.env.NODE_ENV === "development" ? "debug" : "info",
-    timeout: getRequiredNumber("PROXY_TIMEOUT"),
-    proxyTimeout: getRequiredNumber("PROXY_TIMEOUT"),
-    pathRewrite: {
-      "^/prayers": "/api/management/prayers",
-    },
-    onProxyReq: (proxyReq, req, res, options) => {
-      const originalUrl = req.originalUrl;
-      const transformedUrl = originalUrl.replace("/prayers", "/api/management/prayers");
-      
-      console.log(`📿 [GATEWAY-PRAYER] ${req.method} ${originalUrl} → ${getRequiredString("MANAGEMENT_URL")}${transformedUrl}`);
-      
-      proxyReq.setHeader("X-Gateway-Service", "prayers");
-      proxyReq.setHeader("X-Gateway-Timestamp", Date.now().toString());
-      proxyReq.setHeader(
-        "X-Forwarded-For",
-        req.ip || req.socket.remoteAddress || ""
-      );
-      proxyReq.setHeader("X-Forwarded-Host", req.headers.host || "");
-
-      if (req.headers.authorization) {
-        proxyReq.setHeader("Authorization", req.headers.authorization);
-      }
-
-      if (req.headers["content-type"]) {
-        proxyReq.setHeader("Content-Type", req.headers["content-type"]);
-      }
-
-      if (
-        req.method === "POST" ||
-        req.method === "PUT" ||
-        req.method === "PATCH" ||
-        req.method === "DELETE"
-      ) {
-        if (req.body) {
-          const bodyData = JSON.stringify(req.body);
-          if (!proxyReq.getHeader("Content-Type")) {
-            proxyReq.setHeader("Content-Type", "application/json");
-          }
-          proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
-          proxyReq.write(bodyData);
-          console.log(`📦 [GATEWAY-PRAYER] Body enviado: ${bodyData.length} bytes`);
-        }
-      }
-    },
-    onProxyRes: (proxyRes, req, res) => {
-      const statusCode = proxyRes.statusCode || 0;
-      const originalUrl = req.originalUrl;
-
-      console.log(`✅ [GATEWAY-PRAYER] ${statusCode} ${originalUrl}`);
-
-      proxyRes.headers["X-Gateway-Processed"] = "true";
-      proxyRes.headers["X-Gateway-Service"] = "prayers";
-      proxyRes.headers["X-Gateway-Response-Time"] = Date.now().toString();
-
-      if (statusCode === 200 || statusCode === 201) {
-        console.log(`🟢 [GATEWAY-PRAYER] Sucesso: ${originalUrl}`);
-      } else if (statusCode >= 400) {
-        console.log(`🔴 [GATEWAY-PRAYER] Erro ${statusCode}: ${originalUrl}`);
-      }
-    },
-    onError: (err, req, res) => {
-      const errorWithCode = err as ErrorWithCode;
-      const originalUrl = req.originalUrl;
-      const target = getRequiredString("MANAGEMENT_URL");
-
-      console.error("❌ [GATEWAY-PRAYER ERROR]:", {
-        message: errorWithCode.message,
-        code: errorWithCode.code,
-        url: originalUrl,
-        target: target,
-        method: req.method,
-        timestamp: new Date().toISOString(),
-        stack: errorWithCode.stack,
-      });
-
-      res.status(502).json({
-        success: false,
-        error: "Bad Gateway",
-        message: "Prayers service is not responding",
-        service: "prayers",
-        target: target,
-        requestUrl: originalUrl,
-        requestMethod: req.method,
-        timestamp: new Date().toISOString(),
-        gatewayError: errorWithCode.message,
-      });
-    },
-  },
 };
 
 // ========== CRIAR PROXIES ==========
@@ -500,7 +542,6 @@ const setupProxy = (service: string, config: Options): RequestHandler => {
       );
 
       if (typeof config.onProxyReq === "function") {
-        // Cast para o tipo correto
         (config.onProxyReq as OnProxyReqFn)(proxyReq, req, res, options);
       }
     },
@@ -512,37 +553,122 @@ const setupProxy = (service: string, config: Options): RequestHandler => {
   });
 };
 
-// ========== CONFIGURAR ROTAS DE PROXY ==========
+// ========== ROTAS DE DEBUG E TESTE ==========
 
-router.use(
-  "/api/chatbot",
-  proxyLogger("chatbot"),
-  setupProxy("chatbot", proxyConfigs.chatbot)
-);
-router.use(
-  "/api/management",
-  proxyLogger("management"),
-  setupProxy("management", proxyConfigs.management)
-);
-router.use(
-  "/api/monitoring",
-  proxyLogger("monitoring"),
-  setupProxy("monitoring", proxyConfigs.monitoring)
-);
-router.use(
-  "/api/notify",
-  proxyLogger("notify"),
-  setupProxy("notify", proxyConfigs.notify)
-);
+// Rota de debug do gateway
+router.get("/gateway/debug", (req: Request, res: Response) => {
+  console.log("🔍 Gateway debug endpoint acessado");
+  res.json({
+    success: true,
+    message: "Gateway está funcionando",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    port: process.env.PORT,
+    services: {
+      management: {
+        url: getRequiredString("MANAGEMENT_URL"),
+        prayersRoute: "/prayers → /api/management/prayers",
+        status: "configured",
+      },
+    },
+  });
+});
 
-// ========== NOVA ROTA PARA ORAÇÕES ==========
+// Rota de teste específica para prayers
+router.get("/prayers/debug", (req: Request, res: Response) => {
+  console.log("🔍 /prayers/debug endpoint acessado");
+  res.json({
+    success: true,
+    message: "Rota /prayers está registrada no gateway",
+    proxyConfig: {
+      target: proxyConfigs.prayers.target,
+      pathRewrite: proxyConfigs.prayers.pathRewrite,
+      timeout: proxyConfigs.prayers.timeout,
+    },
+    testUrls: {
+      directBackend: `${getRequiredString(
+        "MANAGEMENT_URL"
+      )}/api/management/prayers?page=1&limit=5`,
+      viaGateway: `http://localhost:${
+        process.env.PORT || 8080
+      }/prayers?page=1&limit=5`,
+    },
+  });
+});
+
+// Health check simples
+router.get("/gateway/health", (req: Request, res: Response) => {
+  res.json({
+    status: "healthy",
+    service: "gateway",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+// ========== CONFIGURAR ROTAS DE PROXY (ORDEM CRÍTICA!) ==========
+
+// 🔥 ORDEM CORRETA: Rotas específicas primeiro!
+
+// 1. ROTA PRAYERS (ESPECÍFICA - DEVE VIR PRIMEIRO!)
 router.use(
   "/prayers",
   proxyLogger("prayers"),
   setupProxy("prayers", proxyConfigs.prayers)
 );
 
-// ========== ROTA DE HEALTH ==========
+// 2. Rotas gerais (vêm depois)
+router.use(
+  "/api/chatbot",
+  proxyLogger("chatbot"),
+  setupProxy("chatbot", proxyConfigs.chatbot)
+);
+
+router.use(
+  "/api/management",
+  proxyLogger("management"),
+  setupProxy("management", proxyConfigs.management)
+);
+
+router.use(
+  "/api/monitoring",
+  proxyLogger("monitoring"),
+  setupProxy("monitoring", proxyConfigs.monitoring)
+);
+
+router.use(
+  "/api/notify",
+  proxyLogger("notify"),
+  setupProxy("notify", proxyConfigs.notify)
+);
+
+// ========== ROTA FALLBACK PARA ERROS ==========
+
+// Rota para capturar 404
+router.use((req: Request, res: Response) => {
+  console.log(
+    `❌ [GATEWAY-404] Rota não encontrada: ${req.method} ${req.originalUrl}`
+  );
+
+  res.status(404).json({
+    success: false,
+    error: "Route not found",
+    message: `Route ${req.originalUrl} not found in gateway`,
+    availableRoutes: [
+      "/prayers/*",
+      "/api/management/*",
+      "/api/chatbot/*",
+      "/api/monitoring/*",
+      "/api/notify/*",
+      "/gateway/debug",
+      "/prayers/debug",
+      "/gateway/health",
+    ],
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ========== ROTA DE HEALTH DOS PROXIES ==========
 
 router.get(
   "/api/gateway/proxies/health",
@@ -570,7 +696,9 @@ router.get(
       },
       {
         name: "prayers",
-        url: `${getRequiredString("MANAGEMENT_URL")}/api/management/prayers/health`,
+        url: `${getRequiredString(
+          "MANAGEMENT_URL"
+        )}/api/management/prayers/health`,
         apiKey: getOptionalString("MANAGEMENT_API_KEY"),
       },
     ];
@@ -677,6 +805,11 @@ router.get("/api/gateway/config", (req: Request, res: Response) => {
           url: getRequiredString("MANAGEMENT_URL"),
           hasApiKey: !!getOptionalString("MANAGEMENT_API_KEY"),
           healthEndpoint: "/api/management/health",
+          prayersProxy: {
+            route: "/prayers",
+            target: "/api/management/prayers",
+            active: true,
+          },
         },
         monitoring: {
           url: getRequiredString("MONITORING_URL"),
@@ -693,6 +826,7 @@ router.get("/api/gateway/config", (req: Request, res: Response) => {
           hasApiKey: !!getOptionalString("MANAGEMENT_API_KEY"),
           healthEndpoint: "/api/management/prayers/health",
           note: "Proxy para /prayers → /api/management/prayers",
+          routeOrder: "FIRST (specific route before general routes)",
         },
       },
     };
@@ -719,6 +853,10 @@ router.get("/api/gateway/proxies/status", (req: Request, res: Response) => {
         pathRewrite: config.pathRewrite
           ? Object.keys(config.pathRewrite)[0]
           : "none",
+        pathRewriteTo: config.pathRewrite
+          ? Object.values(config.pathRewrite)[0]
+          : "none",
+        order: service === "prayers" ? "FIRST" : "AFTER",
       })
     );
 
@@ -727,6 +865,8 @@ router.get("/api/gateway/proxies/status", (req: Request, res: Response) => {
       proxies: proxyStatuses,
       total: proxyStatuses.length,
       configured: proxyStatuses.filter((p) => p.configured).length,
+      routeOrderWarning:
+        "prayers MUST be before management in route registration",
     });
   } catch (error: any) {
     res.status(500).json({

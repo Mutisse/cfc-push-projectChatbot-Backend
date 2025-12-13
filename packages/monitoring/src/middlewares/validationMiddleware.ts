@@ -1,6 +1,13 @@
+// src/middlewares/validationMiddleware.ts
 import { Request, Response, NextFunction } from 'express';
 import Joi from 'joi';
-import { ALERT_SEVERITY, ALERT_STATUS, SERVICE_STATUS, LOG_LEVEL, LOG_SOURCE } from '../config/constants';
+import { 
+  ALERT_SEVERITY, 
+  ALERT_STATUS, 
+  SERVICE_STATUS, 
+  LOG_LEVELS, 
+  LOG_SOURCE 
+} from '../config/constants';
 
 export const validateRequest = (schema: Joi.ObjectSchema) => {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -115,7 +122,7 @@ export const metricSchemas = {
 
 export const logSchemas = {
   create: Joi.object({
-    level: Joi.string().valid(...Object.values(LOG_LEVEL)).required(),
+    level: Joi.string().valid(...Object.values(LOG_LEVELS)).required(),
     message: Joi.string().required().min(1).max(1000),
     source: Joi.string().valid(...Object.values(LOG_SOURCE)).required(),
     service: Joi.string().optional(),
@@ -135,7 +142,7 @@ export const logSchemas = {
 
   batch: Joi.array().items(
     Joi.object({
-      level: Joi.string().valid(...Object.values(LOG_LEVEL)).required(),
+      level: Joi.string().valid(...Object.values(LOG_LEVELS)).required(),
       message: Joi.string().required().min(1).max(1000),
       source: Joi.string().valid(...Object.values(LOG_SOURCE)).required(),
       service: Joi.string().optional(),
@@ -145,4 +152,34 @@ export const logSchemas = {
       userId: Joi.string().optional()
     })
   ).min(1).max(1000)
+};
+
+// Schemas para dashboard
+export const dashboardSchemas = {
+  dateRange: Joi.object({
+    startDate: Joi.date().required(),
+    endDate: Joi.date().required(),
+    interval: Joi.string().valid('hour', 'day', 'week', 'month').default('day')
+  }),
+
+  filter: Joi.object({
+    services: Joi.array().items(Joi.string()).optional(),
+    environments: Joi.array().items(Joi.string()).optional(),
+    status: Joi.array().items(Joi.string()).optional(),
+    severity: Joi.array().items(Joi.string()).optional(),
+    tags: Joi.array().items(Joi.string()).optional()
+  })
+};
+
+// Schemas para exportação
+export const exportSchemas = {
+  export: Joi.object({
+    format: Joi.string().valid('csv', 'json', 'pdf', 'text').required(),
+    dataType: Joi.string().valid('alerts', 'logs', 'metrics', 'services').required(),
+    filters: Joi.object().optional(),
+    dateRange: Joi.object({
+      startDate: Joi.date().optional(),
+      endDate: Joi.date().optional()
+    }).optional()
+  })
 };

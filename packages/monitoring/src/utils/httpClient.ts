@@ -1,4 +1,5 @@
-import axios, { AxiosInstance, AxiosRequestConfig, } from 'axios';
+// src/utils/httpClient.ts
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import config from '../config';
 
 export interface HealthCheckResult {
@@ -29,7 +30,7 @@ class HttpClient {
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': `CFC-Monitoring/${config.APP_NAME}`,
-        'X-Request-ID': () => this.generateRequestId()
+        'X-Request-ID': this.generateRequestId()
       },
       validateStatus: (status) => status < 500 // Considera 5xx como erro
     });
@@ -184,7 +185,7 @@ class HttpClient {
         });
 
         const responseTime = Date.now() - startTime;
-        const status = response.status >= 200 && response.status < 300 ? 'success' : 'failed';
+        const status: 'success' | 'failed' = response.status >= 200 && response.status < 300 ? 'success' : 'failed';
 
         return {
           endpoint,
@@ -192,7 +193,7 @@ class HttpClient {
           responseTime,
           statusCode: response.status,
           error: status === 'failed' ? `HTTP ${response.status}` : undefined
-        };
+        } as EndpointTestResult;
       } catch (error: any) {
         const responseTime = Date.now() - startTime;
         return {
@@ -200,7 +201,7 @@ class HttpClient {
           status: 'failed' as const,
           responseTime,
           error: error.message || 'Request failed'
-        };
+        } as EndpointTestResult;
       }
     });
 
@@ -260,7 +261,8 @@ class HttpClient {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        return await this.client.request<T>(config);
+        const response = await this.client.request<T>(config);
+        return response.data;
       } catch (error) {
         lastError = error;
         

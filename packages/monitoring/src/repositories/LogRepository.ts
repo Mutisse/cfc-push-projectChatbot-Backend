@@ -1,8 +1,9 @@
-import { Log, ILog } from '../models/Log';
+// src/repositories/LogRepository.ts
+import { Log, ILog, LogLevel, LogSource } from '../models/LogModel';
 
 export interface LogFilters {
-  level?: string;
-  source?: string;
+  level?: LogLevel;
+  source?: LogSource;
   service?: string;
   search?: string;
   startDate?: Date;
@@ -59,7 +60,6 @@ export class LogRepository {
   }
 
   async create(logData: Partial<ILog>): Promise<ILog> {
-    // Validar campos obrigatórios
     const requiredFields = ['level', 'message', 'source'];
     const missingFields = requiredFields.filter(field => !logData[field as keyof ILog]);
     
@@ -68,17 +68,17 @@ export class LogRepository {
     }
 
     const log = new Log(logData);
-    return log.save();
+    return await log.save();
   }
 
   async createBatch(logsData: Partial<ILog>[]): Promise<ILog[]> {
-    // Validar e converter cada log
     const validLogs = logsData.map(data => {
       const log = new Log(data);
       return log.toObject();
     });
     
-    return Log.insertMany(validLogs) as unknown as ILog[];
+    const result = await Log.insertMany(validLogs);
+    return result as unknown as ILog[];
   }
 
   async getLogsByService(service: string, limit: number = 100): Promise<ILog[]> {
@@ -133,7 +133,7 @@ export class LogRepository {
     }, {});
 
     const byService = serviceStats.reduce((acc: Record<string, number>, curr) => {
-      acc[curr._id] = curr.count;
+      acc[curr._id || 'unknown'] = curr.count;
       return acc;
     }, {});
 
@@ -171,10 +171,17 @@ export class LogRepository {
       .lean<ILog[]>();
   }
 
-  async getErrorTrend(days: number = 7): Promise<Array<{ date: string; count: number }>> {
+  async getErrorTrend(days: number = 7): Promise<{
+    dates: string[];
+    counts: number[];
+    byLevel: Record<LogLevel, number[]>;
+    bySource: Record<LogSource, number[]>;
+    averageDaily: number;
+  }> {
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const result = await Log.aggregate([
+    // Pipeline principal para contagem por data
+    const dailyCounts = await Log.aggregate([
       {
         $match: {
           level: 'error',
@@ -186,20 +193,100 @@ export class LogRepository {
           _id: {
             $dateToString: { format: '%Y-%m-%d', date: '$timestamp' }
           },
-          count: { $sum: 1 }
+          count: { $sum: 1 },
+          levels: { $push: '$level' },
+          sources: { $push: '$source' }
         }
       },
       {
         $project: {
           date: '$_id',
           count: 1,
+          levels: 1,
+          sources: 1,
           _id: 0
         }
       },
       { $sort: { date: 1 } }
     ]);
 
-    return result;
+    // Inicializar estruturas
+    const dates: string[] = [];
+    const counts: number[] = [];
+    
+    // Inicializar byLevel e bySource
+    const byLevel: Record<LogLevel, number[]> = {
+      debug: [], info: [], warn: [], error: [], fatal: []
+    };
+    
+    const bySource: Record<LogSource, number[]> = {
+      gateway: [], notify: [], chatbot: [], management: [], 
+      monitoring: [], system: [], proxy: [], 'performance-monitor': []
+    };
+
+    // Preencher arrays com zeros para todos os dias
+    const allDates: string[] = [];
+    for (let i = 0; i < days; i++) {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + i);
+      const dateStr = date.toISOString().split('T')[0];
+      allDates.push(dateStr);
+      
+      // Inicializar todos os arrays com zeros
+      dates.push(dateStr);
+      counts.push(0);
+      Object.keys(byLevel).forEach(level => byLevel[level as LogLevel].push(0));
+      Object.keys(bySource).forEach(source => bySource[source as LogSource].push(0));
+    }
+
+    // Preencher com dados reais
+    dailyCounts.forEach(day => {
+      const index = dates.indexOf(day.date);
+      if (index !== -1) {
+        counts[index] = day.count;
+        
+        // Contar por level para este dia
+        if (day.levels) {
+          const levelCounts: Record<string, number> = {};
+          day.levels.forEach((level: LogLevel) => {
+            levelCounts[level] = (levelCounts[level] || 0) + 1;
+          });
+          
+          // Atualizar byLevel
+          Object.keys(levelCounts).forEach(level => {
+            if (byLevel[level as LogLevel]) {
+              byLevel[level as LogLevel][index] = levelCounts[level];
+            }
+          });
+        }
+        
+        // Contar por source para este dia
+        if (day.sources) {
+          const sourceCounts: Record<string, number> = {};
+          day.sources.forEach((source: LogSource) => {
+            sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+          });
+          
+          // Atualizar bySource
+          Object.keys(sourceCounts).forEach(source => {
+            if (bySource[source as LogSource]) {
+              bySource[source as LogSource][index] = sourceCounts[source];
+            }
+          });
+        }
+      }
+    });
+
+    const totalErrors = counts.reduce((sum, count) => sum + count, 0);
+    const averageDaily = days > 0 ? totalErrors / days : 0;
+
+    return {
+      dates,
+      counts,
+      byLevel,
+      bySource,
+      averageDaily
+    };
   }
 
   async rotateLogs(daysToKeep: number = 30): Promise<number> {

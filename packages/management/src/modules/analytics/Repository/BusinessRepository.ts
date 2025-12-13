@@ -23,24 +23,19 @@ export class BusinessRepository {
     }
   }
 
-  async getTotalMembers(): Promise<number> {
-    try {
-      // Conta membros ATIVOS (com status active ou sem status)
-      const count = await MemberRegistration.countDocuments({
-        $or: [
-          { status: 'active' },
-          { status: { $exists: false } }, // Se não tiver status, conta
-          { active: true }
-        ]
-      });
-      console.log('📊 Membros ATIVOS encontrados:', count);
-      return count;
-    } catch (error) {
-      console.error('❌ Erro ao contar membros:', error);
-      return 0;
-    }
+async getTotalMembers(): Promise<number> {
+  try {
+    // Conta apenas membros APROVADOS
+    const count = await MemberRegistration.countDocuments({ 
+      status: 'approved' 
+    });
+    console.log('📊 Membros APROVADOS:', count);
+    return count;
+  } catch (error) {
+    console.error('❌ Erro ao contar membros:', error);
+    return 0;
   }
-
+}
   async getActivePrayers(): Promise<number> {
     try {
       // Conta apenas orações ATIVAS/PENDENTES
@@ -88,8 +83,8 @@ export class BusinessRepository {
           { available: true },
           { active: true },
           // Se não tiver status nem available, assume que está disponível?
-          // { status: { $exists: false } },
-          // { available: { $exists: false } }
+          { status: { $exists: false } },
+          { available: { $exists: false } }
         ]
       });
       console.log('📊 Servos DISPONÍVEIS encontrados:', count);
@@ -128,7 +123,7 @@ export class BusinessRepository {
           { status: 'completed' },
           { completed: true },
           // Se quiser contar todas as visitas (incluindo agendadas):
-          // { status: { $exists: false } }
+          { status: { $exists: false } }
         ]
       });
       console.log('📊 Visitas CONCLUÍDAS encontradas:', count);
