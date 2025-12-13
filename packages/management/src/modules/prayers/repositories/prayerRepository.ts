@@ -1,7 +1,9 @@
-// src/modules/prayers/repositories/prayerRepository.ts
-import { Prayer } from "../models/Prayer";
+import mongoose from "mongoose";
 import { IPrayer } from "../interfaces/prayer.interface";
 import { Types } from "mongoose";
+
+const Prayer =
+  mongoose.models.Prayer || mongoose.model("Prayer", new mongoose.Schema({}));
 
 export class PrayerRepository {
   // ==================== CRUD BÁSICO ====================
@@ -196,15 +198,12 @@ export class PrayerRepository {
       const pending = allActivePrayers.filter(
         (p: any) => (p.status || "pending") === "pending"
       ).length;
-
       const in_prayer = allActivePrayers.filter(
         (p: any) => (p.status || "pending") === "in_prayer"
       ).length;
-
       const completed = allActivePrayers.filter(
         (p: any) => (p.status || "pending") === "completed"
       ).length;
-
       const archived = allActivePrayers.filter(
         (p: any) => (p.status || "pending") === "archived"
       ).length;
@@ -316,10 +315,7 @@ export class PrayerRepository {
   // ==================== BUSCA POR TELEFONE ====================
   async findDeletedById(id: string): Promise<IPrayer | null> {
     if (!Types.ObjectId.isValid(id)) return null;
-    return await Prayer.findOne({
-      _id: id,
-      deletedAt: { $ne: null },
-    }).exec();
+    return await Prayer.findOne({ _id: id, deletedAt: { $ne: null } }).exec();
   }
 
   async findByPhone(phone: string): Promise<IPrayer[]> {
@@ -358,9 +354,7 @@ export class PrayerRepository {
 
       console.log(`📱 Últimos 9 dígitos do input: ${last9Digits}`);
 
-      const prayer = await Prayer.findOne({
-        _id: prayerId,
-      });
+      const prayer = await Prayer.findOne({ _id: prayerId });
 
       if (!prayer) {
         console.log("❌ Pedido não encontrado no banco");
