@@ -1,3 +1,4 @@
+// src/modules/prayers/repositories/prayerRepository.ts
 import { Prayer } from "../models/Prayer";
 import { IPrayer } from "../interfaces/prayer.interface";
 import { Types } from "mongoose";
@@ -34,7 +35,7 @@ export class PrayerRepository {
   // ==================== SOFT DELETE ====================
 
   async softDelete(id: string, deletedBy?: string): Promise<IPrayer | null> {
-    console.log("🔍 REPOSITORY softDelete - ID:", id, "deletedBy:", deletedBy); // ADICIONE LOG
+    console.log("🔍 REPOSITORY softDelete - ID:", id, "deletedBy:", deletedBy);
 
     if (!Types.ObjectId.isValid(id)) {
       console.log("❌ ID inválido no repository.softDelete:", id);
@@ -42,19 +43,16 @@ export class PrayerRepository {
     }
 
     try {
-      // 🔥 CORREÇÃO: Verificar SE deletedBy existe E é válido antes de criar ObjectId
       const updateData: any = {
         deletedAt: new Date(),
         status: "archived",
       };
 
       if (deletedBy) {
-        // ⚠️ VERIFICAÇÃO CRÍTICA: deletedBy pode ser "public" (string) não ObjectId!
         if (Types.ObjectId.isValid(deletedBy)) {
           updateData.deletedBy = new Types.ObjectId(deletedBy);
           console.log("✅ deletedBy é ObjectId válido");
         } else {
-          // Se não for ObjectId válido, guarda como string
           updateData.deletedByString = deletedBy;
           console.log(
             "⚠️ deletedBy NÃO é ObjectId, guardando como string:",
@@ -101,7 +99,7 @@ export class PrayerRepository {
       return deletedPrayers;
     } catch (error) {
       console.error("❌ REPOSITORY: Erro ao buscar deletados:", error);
-      return []; // Retorna array vazio
+      return [];
     }
   }
 
@@ -181,7 +179,6 @@ export class PrayerRepository {
     console.log("📊 REPOSITORY: Iniciando cálculo de estatísticas");
 
     try {
-      // 1. Buscar TODOS os documentos ativos
       const allActivePrayers = await Prayer.find({
         deletedAt: null,
       })
@@ -194,43 +191,38 @@ export class PrayerRepository {
         return this.getEmptyStats();
       }
 
-      // 2. Calcular estatísticas com fallbacks
       const total = allActivePrayers.length;
 
-      // Contar por status (com fallback para "pending" se não existir)
       const pending = allActivePrayers.filter(
-        (p) => (p.status || "pending") === "pending"
+        (p: any) => (p.status || "pending") === "pending"
       ).length;
 
       const in_prayer = allActivePrayers.filter(
-        (p) => (p.status || "pending") === "in_prayer"
+        (p: any) => (p.status || "pending") === "in_prayer"
       ).length;
 
       const completed = allActivePrayers.filter(
-        (p) => (p.status || "pending") === "completed"
+        (p: any) => (p.status || "pending") === "completed"
       ).length;
 
       const archived = allActivePrayers.filter(
-        (p) => (p.status || "pending") === "archived"
+        (p: any) => (p.status || "pending") === "archived"
       ).length;
 
-      // 3. Distribuição por urgência (com fallback para "medium")
       const byUrgency = { low: 0, medium: 0, high: 0 };
-      allActivePrayers.forEach((prayer) => {
+      allActivePrayers.forEach((prayer: any) => {
         const urgency = prayer.urgency || "medium";
         if (urgency === "low") byUrgency.low++;
         else if (urgency === "medium") byUrgency.medium++;
         else if (urgency === "high") byUrgency.high++;
       });
 
-      // 4. Distribuição por tipo (com fallback para "outro")
       const byType: Record<string, number> = {};
-      allActivePrayers.forEach((prayer) => {
+      allActivePrayers.forEach((prayer: any) => {
         const type = prayer.prayerType || "outro";
         byType[type] = (byType[type] || 0) + 1;
       });
 
-      // 5. Tendência semanal
       const weeklyTrend = await this.getWeeklyTrend();
 
       console.log("✅ Estatísticas calculadas:", {
@@ -304,7 +296,6 @@ export class PrayerRepository {
     try {
       console.log("⚠️ REPOSITORY: Buscando urgentes pendentes...");
 
-      // Buscar urgentes (high) que estão pendentes OU não têm status
       const urgentPrayers = await Prayer.find({
         deletedAt: null,
         urgency: "high",
@@ -330,12 +321,11 @@ export class PrayerRepository {
       deletedAt: { $ne: null },
     }).exec();
   }
+
   async findByPhone(phone: string): Promise<IPrayer[]> {
     try {
-      // Limpar e formatar telefone
       const cleanPhone = phone.replace(/\D/g, "").slice(-9);
 
-      // Buscar por últimos 9 dígitos
       return await Prayer.find({
         phone: { $regex: cleanPhone + "$" },
         deletedAt: null,
@@ -348,6 +338,7 @@ export class PrayerRepository {
       return [];
     }
   }
+
   async isPhoneOwner(prayerId: string, phone: string): Promise<boolean> {
     console.log(
       `🔍 REPOSITORY isPhoneOwner: prayerId=${prayerId}, phone=${phone}`
@@ -359,7 +350,6 @@ export class PrayerRepository {
     }
 
     try {
-      // Limpar ambos os telefones da mesma forma
       const cleanInputPhone = phone.replace(/\D/g, "");
       const last9Digits =
         cleanInputPhone.length >= 9
@@ -368,7 +358,6 @@ export class PrayerRepository {
 
       console.log(`📱 Últimos 9 dígitos do input: ${last9Digits}`);
 
-      // Buscar o pedido (mesmo deletado, pois queremos verificar propriedade)
       const prayer = await Prayer.findOne({
         _id: prayerId,
       });
@@ -380,7 +369,6 @@ export class PrayerRepository {
 
       console.log(`📞 Telefone do pedido no banco: ${prayer.phone}`);
 
-      // Limpar telefone do banco
       const cleanDbPhone = prayer.phone.replace(/\D/g, "");
       const last9DbDigits =
         cleanDbPhone.length >= 9
@@ -389,10 +377,7 @@ export class PrayerRepository {
 
       console.log(`📱 Últimos 9 dígitos do banco: ${last9DbDigits}`);
 
-      // Comparação 1: últimos 9 dígitos
       const matchByLast9 = last9Digits === last9DbDigits;
-
-      // Comparação 2: telefone completo
       const matchFull = cleanInputPhone === cleanDbPhone;
 
       console.log(

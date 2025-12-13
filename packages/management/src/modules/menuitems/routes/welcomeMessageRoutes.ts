@@ -1,12 +1,12 @@
 // src/routes/welcomeMessageRoutes.ts
-import { Router } from 'express';
+import { Router, Request, Response } from 'express'; // ✅ TIPOS ADICIONADOS
 import { WelcomeMessageController } from '../controllers/welcomeMessageController';
 
 const router = Router();
 const welcomeMessageController = new WelcomeMessageController();
 
 // ==================== ROTA DE DOCUMENTAÇÃO ====================
-router.get("/docs", (req, res) => {  // ✅ MUDADO DE "/" PARA "/docs"
+router.get("/docs", (req: Request, res: Response) => {  // ✅ TIPOS ADICIONADOS
   res.json({
     service: "CFC Push Management API - Welcome Messages Module", 
     version: "1.0.0",
@@ -95,7 +95,7 @@ router.get("/docs", (req, res) => {  // ✅ MUDADO DE "/" PARA "/docs"
 // ==================== ROTAS DE CONSULTA ====================
 
 // GET routes
-router.get('/', welcomeMessageController.getAllMessages);  // ✅ Esta fica com "/" (dados reais)
+router.get('/', welcomeMessageController.getAllMessages);
 router.get('/active', welcomeMessageController.getActiveMessage);
 router.get('/deleted', welcomeMessageController.getDeletedMessages);
 router.get('/:id', welcomeMessageController.getMessageById);

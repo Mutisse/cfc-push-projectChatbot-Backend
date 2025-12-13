@@ -1,5 +1,5 @@
 // src/modules/analytics/routes/analytics.Routes.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import DashboardController from "../controllers/DashboardController";
 import NotificationController from "../controllers/NotificationController";
 import MessageController from "../controllers/MessageController";
@@ -70,7 +70,7 @@ router.put("/messages/:id/read", MessageController.markAsRead);
 router.delete("/messages/:id", MessageController.deleteMessage);
 
 // ========== HEALTH CHECK ==========
-router.get("/health", (_req, res) => {
+router.get("/health", (_req: Request, res: Response) => {
   res.json({
     success: true,
     message: "Analytics API is healthy",

@@ -1,12 +1,12 @@
 // src/routes/menuRoutes.ts
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { MenuController } from "../controllers/menuController";
 
 const router = Router();
 const menuController = new MenuController();
 
 // ==================== ROTA DE DOCUMENTAÇÃO ====================
-router.get("/docs", (req, res) => {  // ✅ MUDADO DE "/" PARA "/docs"
+router.get("/docs", (req: Request, res: Response) => {  // ✅ TIPOS ADICIONADOS
   res.json({
     service: "CFC Push Management API - Menu Management Module",
     version: "1.0.0",
@@ -94,7 +94,7 @@ router.get("/docs", (req, res) => {  // ✅ MUDADO DE "/" PARA "/docs"
 // ==================== ROTAS DE CONSULTA ====================
 
 // GET routes
-router.get("/", menuController.getAllMenus);  // ✅ Esta fica com "/" (dados reais)
+router.get("/", menuController.getAllMenus);
 router.get("/main", menuController.getMainMenus);
 router.get("/deleted", menuController.getDeletedMenus);
 router.get("/:id", menuController.getMenuById);
