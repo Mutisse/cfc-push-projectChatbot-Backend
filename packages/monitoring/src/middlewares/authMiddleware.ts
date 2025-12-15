@@ -2,16 +2,9 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import config from "../config";
 
-export interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    email: string;
-    role: string;
-  };
-}
-
+// SOLUÇÃO ALTERNATIVA se ainda der erro
 export const authenticateToken = (
-  req: AuthRequest,
+  req: Request, // ← Usar Request em vez de AuthRequest
   res: Response,
   next: NextFunction
 ) => {
@@ -29,7 +22,8 @@ export const authenticateToken = (
 
   try {
     const user = jwt.verify(token, config.JWT_SECRET) as any;
-    req.user = user;
+    // Adicionar user ao req com type assertion
+    (req as any).user = user;
     next();
   } catch (error) {
     return res.status(403).json({
@@ -42,8 +36,10 @@ export const authenticateToken = (
 };
 
 export const requireRole = (...roles: string[]) => {
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user;
+
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: "Authentication required",
@@ -52,7 +48,7 @@ export const requireRole = (...roles: string[]) => {
       });
     }
 
-    if (!roles.includes(req.user.role)) {
+    if (!roles.includes(user.role)) {
       return res.status(403).json({
         success: false,
         message: "Insufficient permissions",
