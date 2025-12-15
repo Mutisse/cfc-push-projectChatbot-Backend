@@ -395,6 +395,9 @@ const proxyConfigs: Record<string, Options> = {
         )}${transformedUrl}`
       );
 
+      // ✅ ADICIONE ESTA LINHA (FALTAVA!)
+      proxyReq.setHeader("Origin", "https://gateway-bx2h.onrender.com");
+
       proxyReq.setHeader("X-Gateway-Service", "monitoring");
       proxyReq.setHeader("X-Gateway-Timestamp", Date.now().toString());
       proxyReq.setHeader(
