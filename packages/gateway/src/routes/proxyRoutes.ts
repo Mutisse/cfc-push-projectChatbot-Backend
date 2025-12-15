@@ -395,8 +395,32 @@ const proxyConfigs: Record<string, Options> = {
         )}${transformedUrl}`
       );
 
-      // ✅ ADICIONE ESTA LINHA (FALTAVA!)
-      proxyReq.setHeader("Origin", "https://gateway-bx2h.onrender.com");
+      // ✅ CORREÇÃO: Usar variável de ambiente para definir o Origin
+      // Pega a URL base do Gateway a partir do HOST e PORT
+      const gatewayHost = getRequiredString("HOST");
+      const gatewayPort = getRequiredString("PORT");
+      const gatewayProtocol = process.env.NODE_ENV === "production" ? "https" : "http";
+      
+      // Constrói a URL do Gateway dinamicamente
+      let gatewayOrigin: string;
+      
+      if (process.env.GATEWAY_URL) {
+        // Se GATEWAY_URL estiver definida, usa ela
+        gatewayOrigin = getOptionalString("GATEWAY_URL").trim();
+      } else if (process.env.RENDER_EXTERNAL_URL) {
+        // Se estiver no Render, usa a URL externa
+        gatewayOrigin = getOptionalString("RENDER_EXTERNAL_URL").trim();
+      } else {
+        // Fallback: constrói a partir de HOST e PORT
+        gatewayOrigin = `${gatewayProtocol}://${gatewayHost}:${gatewayPort}`;
+      }
+      
+      // Remove trailing slash se existir
+      gatewayOrigin = gatewayOrigin.replace(/\/$/, '');
+      
+      // Define o header Origin
+      proxyReq.setHeader("Origin", gatewayOrigin);
+      console.log(`🌐 [GATEWAY-MONITORING] Origin: ${gatewayOrigin}`);
 
       proxyReq.setHeader("X-Gateway-Service", "monitoring");
       proxyReq.setHeader("X-Gateway-Timestamp", Date.now().toString());
@@ -789,13 +813,27 @@ router.get(
 
 router.get("/api/gateway/config", (req: Request, res: Response) => {
   try {
+    // Determina a URL do Gateway dinamicamente
+    let gatewayUrl: string;
+    if (process.env.RENDER_EXTERNAL_URL) {
+      gatewayUrl = getOptionalString("RENDER_EXTERNAL_URL");
+    } else if (process.env.GATEWAY_URL) {
+      gatewayUrl = getOptionalString("GATEWAY_URL");
+    } else {
+      const host = getRequiredString("HOST");
+      const port = getRequiredString("PORT");
+      const protocol = getRequiredString("NODE_ENV") === "production" ? "https" : "http";
+      gatewayUrl = `${protocol}://${host}:${port}`;
+    }
+
     const config = {
       timestamp: new Date().toISOString(),
       environment: getRequiredString("NODE_ENV"),
       gateway: {
+        url: gatewayUrl,
         port: getRequiredString("PORT"),
-        node_env: getRequiredString("NODE_ENV"),
         host: getRequiredString("HOST"),
+        node_env: getRequiredString("NODE_ENV"),
         request_timeout: getRequiredString("PROXY_TIMEOUT"),
       },
       services: {
