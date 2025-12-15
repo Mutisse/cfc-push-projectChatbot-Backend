@@ -12,11 +12,12 @@ export class AuthMiddleware {
     this.userService = new UserService();
   }
 
-  authenticate = async (
+  // MÉTODO NORMAL - não arrow function!
+  async authenticate(
     req: Request,
     res: Response,
     next: NextFunction
-  ): Promise<void> => {
+  ): Promise<void> {
     try {
       const token = this.extractToken(req);
 
@@ -30,7 +31,6 @@ export class AuthMiddleware {
 
       const decoded = this.jwtService.verifyToken(token);
 
-      // Verificar se o decoded tem userId
       if (!decoded || !decoded.userId) {
         res.status(401).json({
           success: false,
@@ -78,9 +78,10 @@ export class AuthMiddleware {
         message: "Token inválido ou expirado",
       });
     }
-  };
+  }
 
-  authorize = (roles: string[]) => {
+  // Método factory que retorna middleware
+  authorize(roles: string[]) {
     return (req: Request, res: Response, next: NextFunction): void => {
       const user = (req as any).user;
 
@@ -102,10 +103,10 @@ export class AuthMiddleware {
 
       next();
     };
-  };
+  }
 
-  // ✅ NOVO: Middleware para verificar permissões específicas
-  requirePermission = (permission: string) => {
+  // Middleware para verificar permissões específicas
+  requirePermission(permission: string) {
     return (req: Request, res: Response, next: NextFunction): void => {
       const user = (req as any).user;
 
@@ -117,15 +118,11 @@ export class AuthMiddleware {
         return;
       }
 
-      // Super admin tem todas as permissões
       if (user.role === "super_admin") {
         next();
         return;
       }
 
-      // Verificar se o usuário tem a permissão necessária
-      // Nota: Esta verificação depende da estrutura de permissões do usuário
-      // Você precisará adaptar baseado na sua implementação
       const hasPermission = this.checkUserPermission(user, permission);
 
       if (!hasPermission) {
@@ -138,10 +135,10 @@ export class AuthMiddleware {
 
       next();
     };
-  };
+  }
 
-  // ✅ NOVO: Middleware para usuários autenticados (qualquer role)
-  requireAuth = (req: Request, res: Response, next: NextFunction): void => {
+  // Middleware para usuários autenticados (qualquer role)
+  requireAuth(req: Request, res: Response, next: NextFunction): void {
     const user = (req as any).user;
 
     if (!user) {
@@ -153,14 +150,10 @@ export class AuthMiddleware {
     }
 
     next();
-  };
+  }
 
-  // ✅ NOVO: Middleware para verificar se é super admin
-  requireSuperAdmin = (
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): void => {
+  // Middleware para verificar se é super admin
+  requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
     const user = (req as any).user;
 
     if (!user) {
@@ -180,21 +173,18 @@ export class AuthMiddleware {
     }
 
     next();
-  };
+  }
 
   private extractToken(req: Request): string | null {
-    // 1. Verificar header Authorization
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       return authHeader.substring(7);
     }
 
-    // 2. Verificar query parameter
     if (req.query.token) {
       return req.query.token as string;
     }
 
-    // 3. Verificar cookie (se estiver usando cookies)
     if (req.cookies?.auth_token) {
       return req.cookies.auth_token;
     }
@@ -203,9 +193,6 @@ export class AuthMiddleware {
   }
 
   private checkUserPermission(user: any, permission: string): boolean {
-    // Implementação baseada na sua estrutura de permissões
-    // Exemplo básico - adapte conforme sua necessidade
-
     const permissionMap: Record<string, string[]> = {
       super_admin: [
         "can_manage_users",
@@ -266,13 +253,13 @@ export class AuthMiddleware {
     return userPermissions.includes(permission);
   }
 
-  // ✅ NOVO: Método para obter usuário do request (helper)
+  // Método para obter usuário do request (helper)
   static getCurrentUser(req: Request): any {
     return (req as any).user;
   }
 
-  // ✅ NOVO: Método para verificar se usuário atual é o dono do recurso
-  isResourceOwner = (resourceUserIdField: string = "userId") => {
+  // Método para verificar se usuário atual é o dono do recurso
+  isResourceOwner(resourceUserIdField: string = "userId") {
     return (req: Request, res: Response, next: NextFunction): void => {
       const user = (req as any).user;
 
@@ -284,13 +271,11 @@ export class AuthMiddleware {
         return;
       }
 
-      // Super admin pode acessar qualquer recurso
       if (user.role === "super_admin") {
         next();
         return;
       }
 
-      // Verificar se o usuário é dono do recurso
       const resourceUserId =
         (req.params as any)[resourceUserIdField] ||
         (req.body as any)[resourceUserIdField];
@@ -305,8 +290,17 @@ export class AuthMiddleware {
 
       next();
     };
-  };
+  }
 }
 
-// ✅ Exportar instância única para uso direto
+// Exporte métodos individuais para facilitar o uso
+export const authenticateMiddleware = new AuthMiddleware().authenticate.bind(
+  new AuthMiddleware()
+);
+export const createAuthorizeMiddleware = (roles: string[]) =>
+  new AuthMiddleware().authorize(roles);
+export const createPermissionMiddleware = (permission: string) =>
+  new AuthMiddleware().requirePermission(permission);
+
+// Exporte também a instância completa se precisar
 export const authMiddleware = new AuthMiddleware();

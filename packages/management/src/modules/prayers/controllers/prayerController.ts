@@ -1,3 +1,4 @@
+// src/modules/prayers/controllers/prayerController.ts
 import { Request, Response } from "express";
 import { PrayerService } from "../services/prayerService";
 
@@ -77,7 +78,7 @@ export class PrayerController {
     console.log(`✏️ CONTROLLER: Buscando pedido para edição: ${req.params.id}`);
     try {
       const { id } = req.params;
-      const { phone } = req.query;
+      const phone = req.query.phone as string;
 
       if (!phone) {
         res.status(400).json({
@@ -90,7 +91,7 @@ export class PrayerController {
 
       const prayer = await this.prayerService.getPrayerForEdit(
         id,
-        phone as string
+        phone
       );
 
       res.status(200).json({
@@ -138,11 +139,10 @@ export class PrayerController {
         message: "Pedido atualizado",
       });
     } catch (error) {
-      const status =
-        error instanceof Error && error.message.includes("permissão")
-          ? 403
-          : 404;
-      res.status(status).json({
+      const statusCode = error instanceof Error && error.message.includes("permissão")
+        ? 403
+        : 404;
+      res.status(statusCode).json({
         success: false,
         message:
           error instanceof Error ? error.message : "Erro ao atualizar pedido",
@@ -155,8 +155,7 @@ export class PrayerController {
     console.log(`\n🎯 ========== DELETE PÚBLICO INICIADO ==========`);
 
     try {
-      // ⚠️ AGORA AMBOS VÊM DE PARAMS!
-      const { id, phone } = req.params; // ❗ MUDOU: phone vem de params, não query!
+      const { id, phone } = req.params;
 
       console.log(
         `🗑️ CONTROLLER: Eliminando pedido ID: ${id}, Phone: ${phone}`
@@ -186,11 +185,10 @@ export class PrayerController {
       });
     } catch (error) {
       console.error(`💥 ERRO NO CONTROLLER:`, error);
-      const status =
-        error instanceof Error && error.message.includes("permissão")
-          ? 403
-          : 404;
-      res.status(status).json({
+      const statusCode = error instanceof Error && error.message.includes("permissão")
+        ? 403
+        : 404;
+      res.status(statusCode).json({
         success: false,
         message:
           error instanceof Error ? error.message : "Erro ao eliminar pedido",
@@ -286,7 +284,7 @@ export class PrayerController {
       const { id } = req.params;
       const { deletedBy } = req.body;
 
-      console.log(`📋 Dados recebidos - ID: ${id}, deletedBy: ${deletedBy}`); // ✅ LOG
+      console.log(`📋 Dados recebidos - ID: ${id}, deletedBy: ${deletedBy}`);
 
       if (!id || id.length < 12) {
         res.status(400).json({
@@ -312,7 +310,7 @@ export class PrayerController {
         message: "Pedido arquivado com sucesso",
       });
     } catch (error) {
-      console.error("❌ CONTROLLER: Erro em softDeletePrayer:", error); // ✅ LOG
+      console.error("❌ CONTROLLER: Erro em softDeletePrayer:", error);
       res.status(400).json({
         success: false,
         message:
@@ -377,6 +375,7 @@ export class PrayerController {
       });
     }
   };
+
   // ==================== HARD DELETE ====================
 
   hardDeletePrayer = async (req: Request, res: Response): Promise<void> => {
@@ -407,78 +406,76 @@ export class PrayerController {
       });
     }
   };
-hardDeleteMany = async (req: Request, res: Response): Promise<void> => {
-  console.log("💥 CONTROLLER: Excluindo múltiplos pedidos");
-  console.log("📦 IDs recebidos:", req.body.ids);
-  
-  try {
-    const { ids } = req.body;
 
-    // ✅ Validação melhorada com mensagens mais claras
-    if (!ids) {
-      res.status(400).json({
-        success: false,
-        message: "O campo 'ids' é obrigatório no corpo da requisição",
-        data: null,
-      });
-      return;
-    }
+  hardDeleteMany = async (req: Request, res: Response): Promise<void> => {
+    console.log("💥 CONTROLLER: Excluindo múltiplos pedidos");
+    console.log("📦 IDs recebidos:", req.body.ids);
+    
+    try {
+      const { ids } = req.body;
 
-    if (!Array.isArray(ids)) {
-      res.status(400).json({
-        success: false,
-        message: "O campo 'ids' deve ser um array de strings",
-        data: null,
-      });
-      return;
-    }
+      if (!ids) {
+        res.status(400).json({
+          success: false,
+          message: "O campo 'ids' é obrigatório no corpo da requisição",
+          data: null,
+        });
+        return;
+      }
 
-    // ✅ Array vazio não é erro - retorna sucesso com count 0
-    if (ids.length === 0) {
-      console.log("📭 Array vazio recebido - retornando sucesso");
+      if (!Array.isArray(ids)) {
+        res.status(400).json({
+          success: false,
+          message: "O campo 'ids' deve ser um array de strings",
+          data: null,
+        });
+        return;
+      }
+
+      if (ids.length === 0) {
+        console.log("📭 Array vazio recebido - retornando sucesso");
+        res.status(200).json({
+          success: true,
+          data: { deletedCount: 0 },
+          message: "Nenhum ID fornecido para exclusão",
+        });
+        return;
+      }
+
+      console.log(`🔍 Validando ${ids.length} IDs...`);
+      
+      const invalidTypes = ids.filter(id => typeof id !== 'string');
+      if (invalidTypes.length > 0) {
+        res.status(400).json({
+          success: false,
+          message: `IDs devem ser strings. ${invalidTypes.length} item(s) inválido(s)`,
+          data: null,
+        });
+        return;
+      }
+
+      const count = await this.prayerService.hardDeleteMany(ids);
+
+      console.log(`✅ ${count} pedido(s) excluído(s)`);
+      
       res.status(200).json({
         success: true,
-        data: { deletedCount: 0 },
-        message: "Nenhum ID fornecido para exclusão",
+        data: { deletedCount: count },
+        message: count > 0 
+          ? `${count} pedido(s) excluído(s) permanentemente`
+          : "Nenhum pedido excluído",
       });
-      return;
-    }
-
-    console.log(`🔍 Validando ${ids.length} IDs...`);
-    
-    // Validação adicional: verificar se há IDs não-string
-    const invalidTypes = ids.filter(id => typeof id !== 'string');
-    if (invalidTypes.length > 0) {
+      
+    } catch (error: any) {
+      console.error("❌ CONTROLLER: Erro em hardDeleteMany:", error.message);
+      
       res.status(400).json({
         success: false,
-        message: `IDs devem ser strings. ${invalidTypes.length} item(s) inválido(s)`,
+        message: `Erro ao excluir pedidos: ${error.message}`,
         data: null,
       });
-      return;
     }
-
-    const count = await this.prayerService.hardDeleteMany(ids);
-
-    console.log(`✅ ${count} pedido(s) excluído(s)`);
-    
-    res.status(200).json({
-      success: true,
-      data: { deletedCount: count },
-      message: count > 0 
-        ? `${count} pedido(s) excluído(s) permanentemente`
-        : "Nenhum pedido excluído (IDs inválidos ou pedidos já removidos)",
-    });
-    
-  } catch (error: any) {
-    console.error("❌ CONTROLLER: Erro em hardDeleteMany:", error.message);
-    
-    res.status(400).json({
-      success: false,
-      message: `Erro ao excluir pedidos: ${error.message}`,
-      data: null,
-    });
-  }
-};
+  };
 
   // ==================== OPERAÇÕES ESPECIAIS ====================
 
@@ -532,7 +529,7 @@ hardDeleteMany = async (req: Request, res: Response): Promise<void> => {
     console.log(`🙏 CONTROLLER: Marcando pedido como orado: ${req.params.id}`);
     try {
       const { id } = req.params;
-      const { prayerCount = 1 } = req.body;
+      const prayerCount = req.body.prayerCount ? parseInt(req.body.prayerCount, 10) : 1;
 
       const prayer = await this.prayerService.markAsPrayed(id, prayerCount);
 
@@ -646,9 +643,9 @@ hardDeleteMany = async (req: Request, res: Response): Promise<void> => {
   getRecentPrayers = async (req: Request, res: Response): Promise<void> => {
     console.log("📅 CONTROLLER: Buscando pedidos recentes");
     try {
-      const days = req.params.days ? parseInt(req.params.days) : 7;
+      const days = req.params.days ? parseInt(req.params.days, 10) : 7;
 
-      if (days < 1 || days > 365) {
+      if (isNaN(days) || days < 1 || days > 365) {
         res.status(400).json({
           success: false,
           message: "Período deve ser entre 1 e 365 dias",
@@ -657,7 +654,6 @@ hardDeleteMany = async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
-      // Implemente conforme necessário
       const prayers = await this.prayerService.getAllPrayers();
       const recent = prayers.slice(0, Math.min(prayers.length, 20));
 
@@ -680,8 +676,8 @@ hardDeleteMany = async (req: Request, res: Response): Promise<void> => {
     try {
       const prayers = await this.prayerService.getAllPrayers();
 
-      const summary = prayers.map((prayer) => ({
-        id: prayer._id,
+      const summary = prayers.map((prayer: any) => ({
+        id: prayer._id || prayer.id,
         name: prayer.name,
         phone: prayer.phone,
         prayerType: prayer.prayerType,
@@ -704,3 +700,5 @@ hardDeleteMany = async (req: Request, res: Response): Promise<void> => {
     }
   };
 }
+
+export default new PrayerController();

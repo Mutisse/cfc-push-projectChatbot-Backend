@@ -1,7 +1,7 @@
 // src/modules/people/users/controllers/authController.ts
-import { Request, Response } from 'express';
-import { UserService } from '../../users/Service/userService';
-import { JwtService } from '../../users/Service/jwtService';
+import { Request, Response } from "express";
+import { UserService } from "../../users/Service/userService";
+import { JwtService } from "../../users/Service/jwtService";
 
 export class AuthController {
   private userService: UserService;
@@ -12,29 +12,53 @@ export class AuthController {
     this.jwtService = new JwtService();
   }
 
-  login = async (req: Request, res: Response): Promise<void> => {
+  // MÉTODO PADRÃO - assim funciona com middleware
+  login = (req: Request, res: Response): Promise<void> => {
+    return this.handleLogin(req, res);
+  };
+
+  refreshToken = (req: Request, res: Response): Promise<void> => {
+    return this.handleRefreshToken(req, res);
+  };
+
+  logout = (req: Request, res: Response): Promise<void> => {
+    return this.handleLogout(req, res);
+  };
+
+  me = (req: Request, res: Response): Promise<void> => {
+    return this.handleMe(req, res);
+  };
+
+  changePassword = (req: Request, res: Response): Promise<void> => {
+    return this.handleChangePassword(req, res);
+  };
+
+  // Métodos privados para implementação
+  private async handleLogin(req: Request, res: Response): Promise<void> {
     try {
       const { identifier, password } = req.body;
-      
+
       if (!identifier || !password) {
         res.status(400).json({
           success: false,
-          message: 'Identificador e password são obrigatórios'
+          message: "Identificador e password são obrigatórios",
         });
         return;
       }
 
-      const user = await this.userService.validateCredentials(identifier, password);
-      
+      const user = await this.userService.validateCredentials(
+        identifier,
+        password
+      );
+
       if (!user) {
         res.status(401).json({
           success: false,
-          message: 'Credenciais inválidas'
+          message: "Credenciais inválidas",
         });
         return;
       }
 
-      // Gerar token JWT
       const token = this.jwtService.generateToken(user);
 
       const userResponse = {
@@ -44,7 +68,7 @@ export class AuthController {
         gender: user.gender,
         role: user.role,
         status: user.status,
-        lastLogin: user.lastLogin
+        lastLogin: user.lastLogin,
       };
 
       res.status(200).json({
@@ -52,26 +76,26 @@ export class AuthController {
         data: {
           user: userResponse,
           token,
-          expiresIn: '7d'
+          expiresIn: "7d",
         },
-        message: 'Login realizado com sucesso'
+        message: "Login realizado com sucesso",
       });
     } catch (error) {
       res.status(401).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Erro ao fazer login'
+        message: error instanceof Error ? error.message : "Erro ao fazer login",
       });
     }
-  };
+  }
 
-  refreshToken = async (req: Request, res: Response): Promise<void> => {
+  private async handleRefreshToken(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).user;
-      
+
       if (!user) {
         res.status(401).json({
           success: false,
-          message: 'Usuário não autenticado'
+          message: "Usuário não autenticado",
         });
         return;
       }
@@ -82,43 +106,42 @@ export class AuthController {
         success: true,
         data: {
           token: newToken,
-          expiresIn: '7d'
+          expiresIn: "7d",
         },
-        message: 'Token atualizado com sucesso'
+        message: "Token atualizado com sucesso",
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Erro ao atualizar token'
+        message:
+          error instanceof Error ? error.message : "Erro ao atualizar token",
       });
     }
-  };
+  }
 
-  logout = async (req: Request, res: Response): Promise<void> => {
+  private async handleLogout(req: Request, res: Response): Promise<void> {
     try {
-      // Em um sistema mais complexo, aqui invalidaríamos o token
-      // Por enquanto, o cliente apenas remove o token localmente
-      
       res.status(200).json({
         success: true,
-        message: 'Logout realizado com sucesso'
+        message: "Logout realizado com sucesso",
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Erro ao fazer logout'
+        message:
+          error instanceof Error ? error.message : "Erro ao fazer logout",
       });
     }
-  };
+  }
 
-  me = async (req: Request, res: Response): Promise<void> => {
+  private async handleMe(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).user;
-      
+
       if (!user) {
         res.status(401).json({
           success: false,
-          message: 'Usuário não autenticado'
+          message: "Usuário não autenticado",
         });
         return;
       }
@@ -132,57 +155,63 @@ export class AuthController {
         status: user.status,
         lastLogin: user.lastLogin,
         createdAt: user.createdAt,
-        updatedAt: user.updatedAt
+        updatedAt: user.updatedAt,
       };
 
       res.status(200).json({
         success: true,
         data: userResponse,
-        message: 'Perfil recuperado com sucesso'
+        message: "Perfil recuperado com sucesso",
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Erro ao buscar perfil'
+        message:
+          error instanceof Error ? error.message : "Erro ao buscar perfil",
       });
     }
-  };
+  }
 
-  changePassword = async (req: Request, res: Response): Promise<void> => {
+  private async handleChangePassword(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     try {
       const user = (req as any).user;
       const { currentPassword, newPassword } = req.body;
-      
+
       if (!currentPassword || !newPassword) {
         res.status(400).json({
           success: false,
-          message: 'Password atual e nova password são obrigatórias'
+          message: "Password atual e nova password são obrigatórias",
         });
         return;
       }
 
-      // Verificar password atual
-      const isValid = await this.userService.validateCredentials(user.phoneNumber, currentPassword);
+      const isValid = await this.userService.validateCredentials(
+        user.phoneNumber,
+        currentPassword
+      );
       if (!isValid) {
         res.status(400).json({
           success: false,
-          message: 'Password atual incorreta'
+          message: "Password atual incorreta",
         });
         return;
       }
 
-      // Atualizar password
       await this.userService.changePassword(user._id, newPassword);
 
       res.status(200).json({
         success: true,
-        message: 'Password alterada com sucesso'
+        message: "Password alterada com sucesso",
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Erro ao alterar password'
+        message:
+          error instanceof Error ? error.message : "Erro ao alterar password",
       });
     }
-  };
+  }
 }

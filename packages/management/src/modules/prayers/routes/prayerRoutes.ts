@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router } from 'express';
 import { PrayerController } from "../controllers/prayerController";
 
 const router = Router();

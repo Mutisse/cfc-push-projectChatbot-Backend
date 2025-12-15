@@ -1,4 +1,5 @@
-import App from "./app";
+// CORREÇÃO: Importe a instância do app (não uma classe)
+import app from "./app";
 import { database } from "./database/connection/dbconnection";
 import { MenuSeeder } from "./database/seeders/menuSeeder";
 import { RootAdminSeeder } from "./database/seeders/seedRootAdmin";
@@ -8,7 +9,6 @@ import dotenv from "dotenv";
 dotenv.config();
 
 class Server {
-  private app: App;
   private port: number;
   private nodeEnv: string;
   private server: any;
@@ -17,7 +17,6 @@ class Server {
     // Validação das variáveis de ambiente obrigatórias
     this.validateEnvironment();
 
-    this.app = new App();
     this.port = this.getValidatedPort();
     this.nodeEnv = this.getValidatedNodeEnv();
     this.server = null;
@@ -63,7 +62,8 @@ class Server {
       await this.runSeedsIfNeeded();
 
       // Depois iniciar servidor HTTP
-      this.server = this.app.getApp().listen(this.port, () => {
+      // CORREÇÃO: app já é a instância do Express
+      this.server = app.listen(this.port, () => {
         console.log(`✅ Management API rodando na porta: ${this.port}`);
         console.log(`🌐 Ambiente: ${this.nodeEnv}`);
         console.log(`📊 Database: ${database.getStatus()}`);

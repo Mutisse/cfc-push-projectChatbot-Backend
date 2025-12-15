@@ -1,81 +1,55 @@
+// src/modules/people/users/Routes/authRoutes.ts
 import { Router } from 'express';
-import { AuthController } from '../controller/authController';
-import { AuthMiddleware } from '../Middleware/authMiddleware'; // ✅ Importação da classe
 
 const router = Router();
-const authController = new AuthController();
-const authMiddleware = new AuthMiddleware(); // ✅ Criando instância
 
-// ==================== ROTA DE DOCUMENTAÇÃO ====================
-router.get("/", (req, res) => {
-  res.json({
-    service: "CFC Push Management API - Authentication Module",
-    version: "1.0.0",
-    status: "operational",
-    description: "Sistema de autenticação e gestão de sessões",
-    endpoints: {
-      auth: {
-        login: {
-          method: "POST",
-          path: "/api/management/auth/login",
-          role: "public",
-          description: "Login no sistema (email ou telefone)"
-        },
-        logout: {
-          method: "POST", 
-          path: "/api/management/auth/logout",
-          role: "authenticated",
-          description: "Logout do sistema"
-        },
-        me: {
-          method: "GET",
-          path: "/api/management/auth/me",
-          role: "authenticated",
-          description: "Obter perfil do usuário atual"
-        },
-        refresh: {
-          method: "POST",
-          path: "/api/management/auth/refresh",
-          role: "authenticated",
-          description: "Refresh token JWT"
-        },
-        changePassword: {
-          method: "PATCH",
-          path: "/api/management/auth/change-password",
-          role: "authenticated",
-          description: "Alterar password do usuário atual"
-        }
-      }
-    },
-    examples: {
-      login: {
-        method: "POST",
-        url: "/api/management/auth/login",
-        body: {
-          identifier: "admin@cfcpush.org", // ou "847001234"
-          password: "AdminRoot123!"
-        }
-      }
-    },
-    notes: [
-      "📱 Pode usar email ou número de telefone como identificador",
-      "🔐 Token JWT válido por 7 dias", 
-      "🔄 Refresh token disponível para renovar sessão",
-      "🚪 Logout remove o token do cliente apenas",
-      "🔒 Password deve ter mínimo 6 caracteres"
-    ]
+// Importar com require para evitar problemas
+const { AuthController } = require('../controller/authController');
+const { authMiddleware } = require('../Middleware/authMiddleware');
+
+const authController = new AuthController();
+
+// Rota pública: Login
+router.post('/login', (req, res) => {
+  authController.login(req, res);
+});
+
+// Rotas protegidas
+router.post('/refresh', (req, res, next) => {
+  authMiddleware.authenticate(req, res, () => {
+    authController.refreshToken(req, res);
   });
 });
 
-// ==================== ROTAS PÚBLICAS ====================
+router.post('/logout', (req, res, next) => {
+  authMiddleware.authenticate(req, res, () => {
+    authController.logout(req, res);
+  });
+});
 
-router.post('/login', authController.login); // ✅ SEM MIDDLEWARE
+router.get('/me', (req, res, next) => {
+  authMiddleware.authenticate(req, res, () => {
+    authController.me(req, res);
+  });
+});
 
-// ==================== ROTAS PROTEGIDAS ====================
+router.patch('/change-password', (req, res, next) => {
+  authMiddleware.authenticate(req, res, () => {
+    authController.changePassword(req, res);
+  });
+});
 
-router.post('/refresh', authMiddleware.authenticate, authController.refreshToken);
-router.post('/logout', authMiddleware.authenticate, authController.logout);
-router.get('/me', authMiddleware.authenticate, authController.me);
-router.patch('/change-password', authMiddleware.authenticate, authController.changePassword);
+// Documentação
+router.get('/', (req, res) => {
+  res.json({
+    service: "CFC Push Management API - Authentication",
+    version: "1.0.0",
+    endpoints: {
+      login: "POST /api/management/auth/login",
+      logout: "POST /api/management/auth/logout",
+      me: "GET /api/management/auth/me",
+    }
+  });
+});
 
 export default router;
